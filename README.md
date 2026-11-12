@@ -275,7 +275,7 @@ runs will add container start-up cost on top; those numbers will be recorded wit
 |---|---|
 | Backend starts; DB migrates and persists | Verified |
 | Dashboard builds and serves real data | Verified (screenshots above) |
-| Example repo registration; passing/failing detection; history; cancel; timeouts | Verified (local runner + 132 automated tests) |
+| Example repo registration; passing/failing detection; history; cancel; timeouts | Verified (local runner + 134 automated backend tests) |
 | Rule-based fallback; scripted demo; approval; retest; compare; export | Verified |
 | Claude Code analysis; Codex analysis | Verified with real CLI calls |
 | Security checks (Bandit, pip-audit, npm audit, workflow schema) | Executed, clean |
@@ -291,6 +291,7 @@ runs will add container start-up cost on top; those numbers will be recorded wit
 - [TESTING.md](docs/TESTING.md): test strategy and scenario coverage
 - [BENCHMARKS.md](docs/BENCHMARKS.md): methodology and results
 - [DEVELOPMENT.md](docs/DEVELOPMENT.md): setup, workflow, troubleshooting
+- [PORTFOLIO.md](docs/PORTFOLIO.md): summary, resume bullets, interview notes, checklist
 
 ## Known limitations
 
