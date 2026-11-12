@@ -36,7 +36,12 @@ export function useApi<T>(path: string | null, pollMs?: number | false): ApiStat
     void reload();
   }, [reload, path]);
 
+  // When polling stops (e.g. a run just finished), fetch once more so the view shows
+  // the final state rather than the last snapshot taken while it was still changing.
+  const wasPolling = useRef(Boolean(pollMs));
   useEffect(() => {
+    if (wasPolling.current && !pollMs) void reload();
+    wasPolling.current = Boolean(pollMs);
     if (!pollMs || path === null) return;
     const id = window.setInterval(() => void reload(), pollMs);
     return () => window.clearInterval(id);

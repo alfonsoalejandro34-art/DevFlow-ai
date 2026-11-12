@@ -87,7 +87,7 @@ Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Backend:** Python 3.12+ (developed on 3.14), FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, SQLite (WAL)
 - **Execution:** Docker (sandbox), pytest + pytest-timeout inside the runner image, Git plumbing
 - **AI:** Claude Code CLI, OpenAI Codex CLI (both via their own logins), provider interface with non-AI fallback
-- **Frontend:** React 19, TypeScript, Vite, Recharts, Vitest + Testing Library
+- **Frontend:** React 19, TypeScript, Vite, Recharts, Vitest + Testing Library, Playwright (browser E2E)
 - **Quality & security:** Ruff, mypy (strict), Bandit, pip-audit, npm audit, GitHub Actions
 - **Observability:** prometheus-client, OpenTelemetry SDK, JSON logging
 
@@ -145,6 +145,7 @@ DEVFLOW_RUNNER=local DEVFLOW_ALLOW_UNSANDBOXED_RUNNER=true make serve
 | Print API token | `make token` |
 | All tests | `make test` |
 | Docker sandbox tests | `make test-docker` |
+| Browser end-to-end test | `make test-e2e` (needs `pip install -e '.[e2e]'` and `playwright install chromium-headless-shell`) |
 | Lint / types | `make lint` / `make typecheck` |
 | Security checks | `make security` |
 | Everything CI runs | `make check` |
@@ -225,6 +226,7 @@ apply; DevFlow makes one CLI call per analysis request, only when a user asks.
 
 - **backend** (Python 3.12 and 3.14): Ruff lint + format check, mypy strict, pytest with coverage; JUnit + coverage uploaded as artifacts
 - **docker-sandbox**: builds the runner image and runs the live sandbox tests
+- **e2e**: Playwright drives the built dashboard against a live server through the whole workflow; failure screenshots uploaded
 - **frontend**: typecheck, Vitest, production build (uploaded as artifact)
 - **security**: Bandit, pip-audit, npm audit, workflow schema validation
 
@@ -276,6 +278,7 @@ Methodology and both batches: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 |---|---|
 | Backend starts; DB migrates and persists | Verified |
 | Dashboard builds and serves real data | Verified (screenshots above) |
+| Full workflow driven through the UI in a real browser | Verified: Playwright test (`make test-e2e`), also run in CI |
 | Example repo registration; passing/failing detection; history; cancel; timeouts | Verified, in Docker and with the local runner (139 automated backend tests) |
 | Rule-based fallback; scripted demo; approval; retest; compare; export | Verified |
 | Claude Code analysis; Codex analysis | Verified with real CLI calls |

@@ -31,10 +31,11 @@ OpenTelemetry traces, and GitHub Actions CI.
 - Hardened Git access against **hostile repositories**: no hooks, filters, or
   fsmonitor, and snapshots built from raw blobs. Tests plant malicious hooks and filter
   drivers and assert they never execute.
-- Wrote **139 backend tests (85% coverage, including live Docker sandbox tests) and 9
-  frontend tests** covering 13 failure and security scenarios end to end (timeouts,
+- Wrote **139 backend tests (85% coverage, including live Docker sandbox tests), 10
+  frontend tests, and a Playwright browser test of the full workflow** covering 13 failure and security scenarios end to end (timeouts,
   cancellation, duplicate jobs, crash recovery, path traversal, revision injection).
-  Testing found and fixed 9 real bugs.
+  Testing found and fixed 10 real bugs, including a UI bug where a failed run briefly
+  read "Every collected test passed".
 - Added **observability** (structured JSON logs with correlation IDs, Prometheus
   metrics, OpenTelemetry traces) and a **benchmark suite** with a documented method. It
   reported honestly that sandboxed runs add ~570 ms over raw pytest on small suites,
@@ -86,7 +87,7 @@ OpenTelemetry traces, and GitHub Actions CI.
 | AI providers (Claude Code, Codex), heuristic fallback, scripted demo | Done, verified live |
 | Patch validation, risk, approval, retest, export | Done, verified |
 | REST API, auth, error handling, OpenAPI | Done, verified |
-| Dashboard (overview, repos, builds, run analysis, reviews, analytics, settings) | Done, verified with screenshots |
+| Dashboard (overview, repos, builds, run analysis, reviews, analytics, settings) | Done, verified with screenshots and a browser E2E test in CI |
 | CLI | Done, verified |
 | Metrics, logs, traces, health warnings | Done, verified |
 | Benchmarks | Done (Docker and local runner batches) |

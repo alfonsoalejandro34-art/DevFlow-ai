@@ -9,7 +9,7 @@ DEVFLOW := $(BIN)/devflow
 RUNNER_IMAGE ?= devflow-runner:0.1
 PIDS := .devflow/pids
 
-.PHONY: help setup runner-image dev serve stop token doctor test test-backend test-docker test-frontend \
+.PHONY: help setup runner-image dev serve stop token doctor test test-backend test-docker test-e2e test-frontend \
         lint typecheck format security check demo demo-local benchmark clean
 
 help:  ## Show available targets
@@ -47,10 +47,14 @@ doctor:  ## Check local tools (Python, git, Docker, runner image, AI CLIs)
 test: test-backend test-frontend  ## Run all non-Docker tests
 
 test-backend:  ## Backend unit, API, security, and workflow tests
-	$(BIN)/pytest -m "not docker and not ai_live" --cov --cov-report=term-missing:skip-covered
+	$(BIN)/pytest -m "not docker and not ai_live and not e2e" --cov --cov-report=term-missing:skip-covered
 
 test-docker:  ## Docker sandbox tests (requires Docker + runner image)
 	$(BIN)/pytest -m docker -v
+
+test-e2e:  ## Browser end-to-end test (builds the dashboard; needs `pip install -e '.[e2e]'` + Playwright Chromium)
+	cd frontend && npm run build
+	PLAYWRIGHT_BROWSERS_PATH=$${PLAYWRIGHT_BROWSERS_PATH:-$(CURDIR)/.cache/ms-playwright} $(BIN)/pytest -m e2e -v
 
 test-frontend:  ## Frontend component tests
 	cd frontend && npx vitest run

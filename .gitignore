@@ -26,3 +26,6 @@ frontend/coverage/
 .DS_Store
 *.log
 .cache/
+
+# Test artifacts
+test-results/

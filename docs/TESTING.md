@@ -3,6 +3,7 @@
 ```bash
 make test           # backend (not Docker) + frontend
 make test-docker    # live sandbox tests (Docker + `make runner-image`)
+make test-e2e       # browser end-to-end test (Playwright + built dashboard)
 make check          # lint, mypy, tests, security: what CI runs
 ```
 
@@ -32,7 +33,8 @@ file and line locations, state transitions, and that user repositories stay unch
 | `test_security.py` | 51 | Path validation and traversal, symlink escapes, hostile git config/filters/hooks, revision injection (6), patch validation (9 malicious shapes), risk scoring, model-diff normalization, redaction, command allowlist, env scrubbing, token file |
 | `test_components.py` | 34 | JUnit parsing (including entity-expansion attack), classification (7), signatures, structure detection, Docker command flags and 10 weakening mutations, Docker failure (exit 125), runner unavailable (503), CLI invocation flags, prompt construction/injection, response parsing, DB constraints, concurrent duplicate submissions |
 | `test_docker_sandbox.py` | 5 | Live, from inside the container: UID, no network, read-only `/src` and rootfs, only `/src` and `/out` mounted from the host (read from `/proc/self/mounts`), no Docker socket, `/root` unreadable, zero capabilities, NoNewPrivs, noexec `/tmp`. Also: examples in Docker, memory limit, cancellation + container cleanup, wall-clock timeout |
-| `frontend/src/__tests__` | 9 | Status badges are labeled, diff rendering, formatting, sign-in errors and bearer header, approval requires an explicit click and posts the decision, invalid patches cannot be approved, export disabled until acknowledged, build history filters |
+| `test_e2e_browser.py` | 2 | Real Chromium against a real server and the production build. Wrong token rejected → sign in → install examples → run → 5 classified failures + traceback → AI providers shown unavailable → scripted diagnosis labelled "not AI" → approve with comment → retest passes → compare shows 5 fixed → history search/filter → patch-review filter → analytics; fails on any browser console error. Signed-out users see no data |
+| `frontend/src/__tests__` | 10 | Status badges are labeled, diff rendering, formatting, sign-in errors and bearer header, approval requires an explicit click and posts the decision, invalid patches cannot be approved, export disabled until acknowledged, build history filters, final refetch when polling stops |
 
 ## Required scenarios
 
@@ -56,7 +58,9 @@ file and line locations, state transitions, and that user repositories stay unch
 
 - Backend: **139 passed, 0 skipped**, including the 5 live Docker sandbox tests
   (Docker Desktop 29.9.3), with 85% line coverage.
-- Frontend: **9 passed**.
+- Frontend: **10 passed**.
+- Browser end-to-end: **2 passed** (3 consecutive runs, ~10 s each). With the bug below
+  reintroduced, the browser test fails, so it does catch real regressions.
 - GitHub Actions ([first run](https://github.com/alfonsoalejandro34-art/DevFlow-ai/actions/runs/43325815665)): backend 134 passed on Python 3.12 and on 3.14,
   Docker sandbox 5/5 on Ubuntu, frontend typecheck/tests/build, and security checks.
   The sandbox properties hold on both Docker Desktop (macOS) and native Linux Docker.
@@ -86,3 +90,7 @@ Live testing caught issues the unit tests had not, and each now has a regression
 9. A sandbox probe used `Path.exists()` on `/root/.ssh`, which raises
    `PermissionError` for the unprivileged user on Python 3.12. The sandbox was correct
    and the probe was wrong. It now asserts the exact mount table instead.
+10. **Found by the browser test:** when a run finished, the failures, tests, and logs
+    panels stopped polling without fetching the final state. A freshly finished run
+    with 5 failures showed "Every collected test passed." until the page was reloaded.
+    The shared data hook now refetches once when polling stops (component test + E2E).

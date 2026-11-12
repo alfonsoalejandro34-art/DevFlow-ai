@@ -38,6 +38,10 @@ dev = [
     "check-jsonschema>=0.29",
 ]
 
+e2e = [
+    "playwright>=1.48",
+]
+
 [project.scripts]
 devflow = "devflow.cli:app"
 
@@ -55,6 +59,7 @@ timeout = 120
 markers = [
     "docker: requires a running Docker engine and the devflow-runner image",
     "ai_live: calls a real AI CLI (opt-in, consumes subscription usage)",
+    "e2e: browser tests against a live server (needs the frontend build and Playwright)",
 ]
 
 [tool.ruff]

@@ -154,3 +154,11 @@ def make_repo(path: Path, files: dict[str, str]) -> Path:
 
 
 docker_available = shutil.which("docker") is not None
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item) -> Iterator[None]:
+    # Exposes each phase's report as item.rep_<phase> (used to screenshot e2e failures).
+    outcome = yield
+    report = outcome.get_result()  # type: ignore[attr-defined]
+    setattr(item, f"rep_{report.when}", report)

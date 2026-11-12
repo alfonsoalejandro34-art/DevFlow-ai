@@ -41,6 +41,8 @@ must not touch the repository.
 Adding a runner: implement `availability()` and `run(spec, cancel)` from
 `runners/base.py` and reuse `supervise()` for timeouts and cancellation.
 
+Browser E2E: `pip install -e '.[e2e]'`, `PLAYWRIGHT_BROWSERS_PATH=.cache/ms-playwright playwright install chromium-headless-shell`, then `make test-e2e`. Failure screenshots go to `test-results/e2e/`.
+
 Screenshots for the README: `PLAYWRIGHT_BROWSERS_PATH=.cache/ms-playwright python
 scripts/screenshots.py` (requires `pip install playwright` and
 `playwright install chromium-headless-shell`, which download into `.cache/`).
