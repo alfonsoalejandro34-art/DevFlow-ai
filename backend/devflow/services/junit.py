@@ -47,7 +47,8 @@ def parse_junit(path: Path) -> list[ParsedTest]:
     for case in root.iter("testcase"):
         classname = case.get("classname", "")
         name = case.get("name", "")
-        file = case.get("file") or _file_from_classname(classname)
+        # Collection errors have no classname; `name` holds the dotted module path.
+        file = case.get("file") or _file_from_classname(classname or name)
         outcome, message, traceback = "passed", None, None
         for child_tag, child_outcome in (
             ("failure", "failed"),
@@ -98,7 +99,7 @@ def _file_from_classname(classname: str) -> str | None:
 
 def _nodeid(classname: str, name: str, file: str | None) -> str:
     if not classname:
-        return name or "<collection>"
+        return file or name or "<collection>"
     if file:
         module = file[:-3].replace("/", ".") if file.endswith(".py") else file
         rest = classname[len(module) :].lstrip(".") if classname.startswith(module) else ""

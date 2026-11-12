@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy.exc import IntegrityError
+
 from devflow.ai import cli_providers
 from devflow.ai.base import AnalysisInput, FailureContext
 from devflow.ai.cli_providers import ClaudeCodeProvider, CodexProvider
@@ -22,7 +24,6 @@ from devflow.runners.docker import DockerRunner, validate_docker_command
 from devflow.services.classify import classify, signature
 from devflow.services.detect import detect_structure
 from devflow.services.junit import JUnitParseError, parse_junit
-from sqlalchemy.exc import IntegrityError
 
 # ---- JUnit and classification ----------------------------------------------------------------
 

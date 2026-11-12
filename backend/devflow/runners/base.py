@@ -66,11 +66,42 @@ class Runner(Protocol):
     def run(self, spec: RunSpec, cancel: threading.Event) -> RunOutcome: ...
 
 
-def pytest_args(junit_path: str, timeout_seconds: int) -> list[str]:
+_CONFIG_MARKERS = (
+    ("pytest.ini", None),
+    (".pytest.ini", None),
+    ("pyproject.toml", "[tool.pytest"),
+    ("tox.ini", "[pytest]"),
+    ("setup.cfg", "[tool:pytest]"),
+)
+
+
+def pytest_config_name(source_dir: Path, output_dir: Path) -> tuple[str, bool]:
+    """Pick the pytest config file for a run.
+
+    Returns ``(name, in_source)``: the repository's own config file at its root, or an
+    empty ``pytest.ini`` written to the output directory. Passing it explicitly with
+    ``-c`` stops pytest from searching parent directories, where it could pick up a
+    configuration that does not belong to the repository.
+    """
+    for name, section in _CONFIG_MARKERS:
+        candidate = source_dir / name
+        if (
+            candidate.is_file()
+            and not candidate.is_symlink()
+            and (section is None or section in candidate.read_text(errors="replace"))
+        ):
+            return name, True
+    (output_dir / "pytest.ini").write_text("[pytest]\n")
+    return "pytest.ini", False
+
+
+def pytest_args(junit_path: str, timeout_seconds: int, rootdir: str, config_path: str) -> list[str]:
     # xunit1 includes file/line attributes on each testcase.
     per_test_timeout = max(5, int(timeout_seconds * 0.8))
     return [
         "-m", "pytest",
+        "-c", config_path,
+        f"--rootdir={rootdir}",
         "-p", "no:cacheprovider",
         "-o", "junit_family=xunit1",
         f"--junitxml={junit_path}",

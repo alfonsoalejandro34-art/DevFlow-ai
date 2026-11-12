@@ -18,7 +18,14 @@ import threading
 import time
 
 from devflow.errors import CommandFailed
-from devflow.runners.base import Availability, RunOutcome, RunSpec, pytest_args, supervise
+from devflow.runners.base import (
+    Availability,
+    RunOutcome,
+    RunSpec,
+    pytest_args,
+    pytest_config_name,
+    supervise,
+)
 from devflow.security.commands import minimal_env, start_process
 
 
@@ -42,12 +49,16 @@ class LocalRunner:
                 "PYTHONNOUSERSITE": "1",
             }
         )
+        name, in_source = pytest_config_name(spec.source_dir, spec.output_dir)
+        config = str((spec.source_dir if in_source else spec.output_dir) / name)
         started = time.monotonic()
         with spec.stdout_path.open("wb") as out, spec.stderr_path.open("wb") as err:
             try:
                 proc = start_process(
                     "python",
-                    pytest_args(str(spec.junit_path), spec.timeout_seconds),
+                    pytest_args(
+                        str(spec.junit_path), spec.timeout_seconds, str(spec.source_dir), config
+                    ),
                     configured=sys.executable,
                     cwd=spec.source_dir,
                     env=env,

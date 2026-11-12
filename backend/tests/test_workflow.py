@@ -351,3 +351,22 @@ def test_interrupted_runs_are_recovered_on_restart(client_factory) -> None:  # t
     recovered = second.get(f"/api/runs/{run['id']}").json()
     assert recovered["status"] == "error"
     assert "Interrupted" in recovered["error_message"]
+
+
+def test_pytest_config_is_never_inherited_from_parent_directories(
+    client_factory, tmp_path: Path
+) -> None:  # type: ignore[no-untyped-def]
+    # Regression: with the data dir inside another project, pytest used to walk up and
+    # apply that project's configuration (here, options that break every run).
+    parent = tmp_path / "outer-project"
+    parent.mkdir()
+    (parent / "pytest.ini").write_text(
+        "[pytest]\naddopts = --definitely-not-an-option\ntestpaths = nowhere\n"
+    )
+    client = client_factory(data_dir=parent / "data")
+    repos = {r["name"]: r["id"] for r in client.post("/api/repositories/examples").json()}
+    for name, expected in (("calculator-passing", "passed"), ("missing-dependency-demo", "failed")):
+        run = wait_run(client, start_run(client, repos[name])["id"])
+        assert run["status"] == expected, run
+    failure = client.get(f"/api/runs/{run['id']}/failures").json()[0]
+    assert failure["nodeid"] == "tests/test_geo.py", failure["nodeid"]

@@ -59,12 +59,17 @@ class PatchReport:
 
 
 def normalize_diff(diff: str) -> str:
+    """Fix formatting slips common in model-written diffs without changing content:
+    CRLF line endings, a missing final newline, and file headers emitted with a stray
+    leading space (`` diff --git ...``), which git would otherwise read as context."""
     text = diff.replace("\r\n", "\n")
+    text = re.sub(r"^ (diff --git a/\S+ b/\S+)$", r"\1", text, flags=re.M)
     return text if text.endswith("\n") else text + "\n"
 
 
 def validate_patch(diff: str) -> PatchReport:
     report = PatchReport()
+    diff = normalize_diff(diff)
     if not diff.strip():
         report.errors.append("patch is empty")
         return report

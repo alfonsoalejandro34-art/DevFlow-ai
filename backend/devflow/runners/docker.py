@@ -14,7 +14,14 @@ import threading
 import time
 
 from devflow.errors import CommandFailed, SecurityViolation
-from devflow.runners.base import Availability, RunOutcome, RunSpec, pytest_args, supervise
+from devflow.runners.base import (
+    Availability,
+    RunOutcome,
+    RunSpec,
+    pytest_args,
+    pytest_config_name,
+    supervise,
+)
 from devflow.security.commands import minimal_env, run_command, start_process
 
 SANDBOX_UID = "10001:10001"
@@ -72,6 +79,8 @@ class DockerRunner:
         return Availability(True, None, version)
 
     def build_command(self, spec: RunSpec, container_name: str) -> list[str]:
+        name, in_source = pytest_config_name(spec.source_dir, spec.output_dir)
+        config = f"/src/{name}" if in_source else f"/out/{name}"
         return [
             "run",
             "--rm",
@@ -96,7 +105,7 @@ class DockerRunner:
             "--mount", f"type=bind,source={spec.output_dir},target=/out",
             "--workdir", "/src",
             self.image,
-            "python", *pytest_args("/out/junit.xml", spec.timeout_seconds),
+            "python", *pytest_args("/out/junit.xml", spec.timeout_seconds, "/src", config),
         ]  # fmt: skip
 
     def run(self, spec: RunSpec, cancel: threading.Event) -> RunOutcome:

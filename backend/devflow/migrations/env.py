@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 from alembic import context
-from devflow.database.models import Base
 from sqlalchemy import Connection, create_engine
+
+from devflow.database.models import Base
 
 config = context.config
 target_metadata = Base.metadata

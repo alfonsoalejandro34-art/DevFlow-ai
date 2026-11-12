@@ -38,7 +38,7 @@ from devflow.database.session import Database
 from devflow.errors import Conflict, DevFlowError, NotFound, ValidationFailed
 from devflow.observability import metrics
 from devflow.observability.tracing import tracer
-from devflow.security.patches import validate_patch
+from devflow.security.patches import normalize_diff, validate_patch
 from devflow.security.paths import make_private_dir, resolve_within
 from devflow.security.redact import redact
 from devflow.services import git
@@ -238,7 +238,7 @@ class AnalysisService:
             analysis_id=record.id,
             run_id=run.id,
             status=PatchStatus.PROPOSED.value if not errors else PatchStatus.INVALID.value,
-            diff=diff,
+            diff=normalize_diff(diff),
             files=report.files,
             rationale=redact(rationale) if rationale else None,
             risk_level=report.risk_level,

@@ -53,7 +53,7 @@ class HeuristicProvider:
         dominant, count = categories.most_common(1)[0]
         root_cause = (
             f"{count} of {len(request.failures)} failure(s) are '{dominant}': "
-            f"{request.failures[0].summary}"
+            f"{next(f for f in request.failures if f.category == dominant).summary}"
         )
         parts = [_ADVICE.get(dominant, _ADVICE["exception"])]
         for failure in request.failures:

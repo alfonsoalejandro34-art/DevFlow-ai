@@ -89,3 +89,6 @@ omit = ["backend/devflow/migrations/*"]
 [tool.bandit]
 exclude_dirs = ["backend/tests", "examples", "frontend", ".venv"]
 skips = ["B101", "B404", "B603"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["devflow"]

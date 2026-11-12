@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pytest
 from conftest import make_repo
-from devflow.config import Settings
 from fastapi.testclient import TestClient
+
+from devflow.config import Settings
 
 
 def test_health_is_public_and_reports_runner(client: TestClient) -> None:

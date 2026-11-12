@@ -7,9 +7,10 @@ Create Date: 2026-11-12 15:03:26.090985
 
 from collections.abc import Sequence
 
-import devflow.database.models
 import sqlalchemy as sa
 from alembic import op
+
+import devflow.database.models
 
 revision: str = "0001"
 down_revision: str | None = None

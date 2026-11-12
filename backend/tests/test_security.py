@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from conftest import git, make_repo
+
 from devflow.errors import SecurityViolation, ValidationFailed
 from devflow.security.commands import run_command
 from devflow.security.patches import validate_patch
@@ -204,6 +205,27 @@ def test_patch_risk_flags_test_weakening_and_dangerous_calls() -> None:
     assert report.risk_level == "high"
     joined = " ".join(report.risk_reasons)
     assert "modifies test files" in joined and "skip/xfail" in joined and "process" in joined
+
+
+def test_model_diff_with_space_prefixed_header_applies(tmp_path: Path) -> None:
+    # Shape observed from a real Codex response: the second file header was emitted
+    # as a context line (" diff --git ..."), which git rejects without normalization.
+    from devflow.services.patching import apply_patch
+
+    src = tmp_path / "src"
+    (src / "pkg").mkdir(parents=True)
+    (src / "pkg" / "a.py").write_text("def a():\n    return 1\n\n\ndef b():\n    return 2\n")
+    (src / "pkg" / "b.py").write_text("X = 1\n")
+    diff = (
+        "diff --git a/pkg/a.py b/pkg/a.py\n--- a/pkg/a.py\n+++ b/pkg/a.py\n@@ -1,4 +1,4 @@\n"
+        " def a():\n-    return 1\n+    return 10\n \n \n diff --git a/pkg/b.py b/pkg/b.py\n"
+        "--- a/pkg/b.py\n+++ b/pkg/b.py\n@@ -1 +1 @@\n-X = 1\n+X = 2\n"
+    )
+    report = validate_patch(diff)
+    assert report.valid and report.files == ["pkg/a.py", "pkg/b.py"]
+    apply_patch(src, diff)
+    assert "return 10" in (src / "pkg" / "a.py").read_text()
+    assert (src / "pkg" / "b.py").read_text() == "X = 2\n"
 
 
 def test_oversized_patch_rejected() -> None:

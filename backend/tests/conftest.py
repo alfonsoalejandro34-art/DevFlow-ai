@@ -8,12 +8,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
+
 from devflow.ai.base import AnalysisInput, AnalysisOutput, Provider
 from devflow.ai.registry import build_providers
 from devflow.app import create_app
 from devflow.config import PROJECT_ROOT, Settings
 from devflow.runners.base import Availability, Runner
-from fastapi.testclient import TestClient
 
 EXAMPLES = PROJECT_ROOT / "examples"
 TERMINAL = {"passed", "failed", "error", "timeout", "cancelled"}
