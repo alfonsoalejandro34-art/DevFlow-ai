@@ -90,7 +90,7 @@ OpenTelemetry traces, and GitHub Actions CI.
 | CLI | Done, verified |
 | Metrics, logs, traces, health warnings | Done, verified |
 | Benchmarks | Done (Docker and local runner batches) |
-| GitHub Actions | Written and schema-validated; **not yet run on GitHub** (no push) |
+| GitHub Actions | Verified: first run passed all 5 jobs, including the live Docker sandbox tests on Linux |
 | Security checks (Bandit, pip-audit, npm audit) | Executed, clean |
 | Clean-clone setup | Verified (`make setup && make test`, server boot + demo) |
 | App `Dockerfile` | Built and run, verified |

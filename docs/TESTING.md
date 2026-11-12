@@ -57,6 +57,9 @@ file and line locations, state transitions, and that user repositories stay unch
 - Backend: **139 passed, 0 skipped**, including the 5 live Docker sandbox tests
   (Docker Desktop 29.9.3), with 85% line coverage.
 - Frontend: **9 passed**.
+- GitHub Actions ([first run](https://github.com/alfonsoalejandro34-art/DevFlow-ai/actions/runs/43325815665)): backend 134 passed on Python 3.12 and on 3.14,
+  Docker sandbox 5/5 on Ubuntu, frontend typecheck/tests/build, and security checks.
+  The sandbox properties hold on both Docker Desktop (macOS) and native Linux Docker.
 - `ruff check`, `ruff format --check`, `mypy --strict` (50 files), `tsc`: clean.
 
 ## Bugs found by testing

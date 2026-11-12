@@ -284,7 +284,7 @@ Methodology and both batches: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 | End-to-end demo through the Docker runner | Verified (11 passed, 1 blocked because AI was not requested) |
 | App image (`Dockerfile`) | Built and run: serves the dashboard, enforces auth, migrates, installs examples |
 | `compose.yaml` with the Docker-socket mount | **Not run**: it grants the container root-equivalent Docker access (documented trade-off) |
-| GitHub Actions workflow | Schema-validated; **not yet run on GitHub** (nothing has been pushed) |
+| GitHub Actions workflow | Verified: [first run](https://github.com/alfonsoalejandro34-art/DevFlow-ai/actions/runs/43325815665) passed all 5 jobs (backend on 3.12 and 3.14, Docker sandbox 5/5 on Linux, frontend, security) |
 | Claude Code and Codex through the Docker runner | AI calls were verified earlier on local-runner runs. The analysis path doesn't depend on the runner, and it was not re-run |
 
 ## Documentation
