@@ -29,3 +29,4 @@ frontend/coverage/
 
 # Test artifacts
 test-results/
+frontend/*.tsbuildinfo
