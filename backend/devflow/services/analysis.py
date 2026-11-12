@@ -13,12 +13,13 @@ import shutil
 import tempfile
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
 
-from devflow.ai.base import AnalysisInput, FailureContext, Provider, ProviderError
+from devflow.ai.base import AnalysisInput, AnalysisOutput, FailureContext, Provider, ProviderError
 from devflow.ai.context import load_files, scan_for_injection, select_files
 from devflow.config import Settings
 from devflow.database.models import (
@@ -42,14 +43,39 @@ from devflow.security.patches import normalize_diff, validate_patch
 from devflow.security.paths import make_private_dir, resolve_within
 from devflow.security.redact import redact
 from devflow.services import git
+from devflow.services.agent_workspace import diff_workspace, prepare_workspace
 from devflow.services.patching import apply_patch
 from devflow.services.repos import RepositoryService
-from devflow.services.runs import RunService
+from devflow.services.runs import RunService, SourcePreparer
 from devflow.services.settings import SettingsService
 from devflow.workers.jobs import JobManager
 
 log = logging.getLogger(__name__)
 MAX_FAILURES_IN_CONTEXT = 8
+MAX_FEEDBACK_FAILURES = 5
+MAX_FEEDBACK_TRACEBACK = 1500
+MAX_FEEDBACK_DIFF = 8000
+
+
+@dataclass
+class _Candidate:
+    """The latest patch produced by the self-correcting loop."""
+
+    attempt: int
+    diff: str
+    rationale: str | None
+    errors: list[str]
+    verification_run_id: int | None = None
+
+
+def _rejection_feedback(diff: str, errors: list[str]) -> str:
+    lines = ["DevFlow rejected your change before running tests:"]
+    lines += [f"- {e}" for e in errors[:10]]
+    if diff:
+        lines += ["", "Your previous change was:", "```diff", diff[:MAX_FEEDBACK_DIFF], "```"]
+    return "\n".join(lines)
+
+
 _ANALYZABLE = (RunStatus.FAILED.value, RunStatus.ERROR.value, RunStatus.TIMEOUT.value)
 
 
@@ -107,7 +133,10 @@ class AnalysisService:
         provider = self.providers.get(name)
         if provider is None:
             raise ValidationFailed(f"Unknown provider {name!r}")
-        record = AnalysisRequest(run_id=run_id, provider=name, is_ai=provider.is_ai)
+        agent = config.ai_mode == "agent" and provider.supports_agent_mode
+        record = AnalysisRequest(
+            run_id=run_id, provider=name, is_ai=provider.is_ai, mode="agent" if agent else "text"
+        )
         reason = None
         if provider.is_ai and not config.ai_enabled:
             reason = "AI integration is disabled in Settings"
@@ -141,27 +170,112 @@ class AnalysisService:
             repo = session.get(Repository, run.repository_id)
             assert repo is not None
             provider = self.providers[record.provider]
-        workspace = make_private_dir(self.settings.ai_workspaces_dir / str(analysis_id))
+            agent = record.mode == "agent"
+        config = self.runtime.get()
+        max_attempts = config.ai_max_attempts if provider.accepts_feedback else 1
+        verify = config.ai_verify_patches and provider.generates_patches
+        source_dir = self.settings.runs_dir / str(run.id) / "src"
+        root = make_private_dir(self.settings.ai_workspaces_dir / str(analysis_id))
+        attempts: list[dict[str, Any]] = []
+        output: AnalysisOutput | None = None
+        candidate: _Candidate | None = None
+        error: str | None = None
         with tracer.start_as_current_span(
-            "devflow.analysis", attributes={"analysis_id": analysis_id, "provider": provider.name}
+            "devflow.analysis",
+            attributes={"analysis_id": analysis_id, "provider": provider.name, "agent": agent},
         ):
             try:
                 request = self._build_input(run, repo)
-                for rel, content in request.files.items():
-                    target = resolve_within(workspace, rel)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(content)
-                output = provider.analyze(request, workspace)
-            except (ProviderError, ValidationFailed, OSError) as exc:
-                self._fail(analysis_id, started, str(exc))
-                return
+                feedback: str | None = None
+                for number in range(1, max_attempts + 1):
+                    if cancel.is_set():
+                        break
+                    attempt_started = time.monotonic()
+                    attempt: dict[str, Any] = {"attempt": number}
+                    workspace = root / f"attempt-{number}"
+                    try:
+                        if agent:
+                            excluded = prepare_workspace(source_dir, workspace)
+                            if excluded:
+                                attempt["excluded_files"] = excluded
+                        else:
+                            self._write_context(workspace, request.files)
+                        output = provider.analyze(
+                            request, workspace, agent=agent, feedback=feedback
+                        )
+                    except ProviderError as exc:
+                        attempt.update(outcome="provider_error", errors=[redact(str(exc))[:500]])
+                        attempts.append(attempt)
+                        if candidate is None:
+                            error = str(exc)
+                        break
+                    finally:
+                        # Agent workspaces are kept until their diff has been computed.
+                        if not agent:
+                            shutil.rmtree(workspace, ignore_errors=True)
+
+                    if agent:
+                        changes = diff_workspace(source_dir, workspace)
+                        shutil.rmtree(workspace, ignore_errors=True)
+                        diff, errors = changes.diff, list(changes.problems)
+                    else:
+                        diff, errors = output.patch or "", []
+                    if not diff and not errors:
+                        attempt.update(
+                            outcome="no_change",
+                            detail="The provider made no changes" if agent else "No patch proposed",
+                        )
+                        attempts.append(attempt | self._elapsed(attempt_started))
+                        break
+                    if diff:
+                        errors += self._check_patch(source_dir, diff)
+                    candidate = _Candidate(number, diff, output.patch_rationale, errors)
+                    attempt["files"] = validate_patch(diff).files if diff else []
+                    done = False
+                    if errors:
+                        attempt.update(outcome="invalid", errors=errors[:10])
+                        feedback = _rejection_feedback(diff, errors)
+                    elif verify:
+                        check = self.runs.run_verification(
+                            repo,
+                            run,
+                            self._patched_source(repo, run, diff),
+                            label=f"{analysis_id}:{number}",
+                        )
+                        candidate.verification_run_id = check.id
+                        attempt.update(
+                            verification_run_id=check.id,
+                            passed=check.passed,
+                            failed=check.failed + check.errors,
+                        )
+                        if check.status == RunStatus.PASSED.value:
+                            attempt["outcome"] = "verified"
+                            done = True
+                        else:
+                            attempt["outcome"] = (
+                                "tests_failed"
+                                if check.status == RunStatus.FAILED.value
+                                else f"verification_{check.status}"
+                            )
+                            feedback = self._test_feedback(diff, check)
+                    else:
+                        attempt["outcome"] = "valid"
+                        done = True
+                    attempts.append(attempt | self._elapsed(attempt_started))
+                    self._save_progress(analysis_id, attempts)
+                    if done:
+                        break
+            except (ValidationFailed, OSError) as exc:
+                error = str(exc)
             except Exception as exc:
                 log.exception("analysis crashed", extra={"analysis_id": analysis_id})
-                self._fail(analysis_id, started, f"{type(exc).__name__}: {exc}")
-                return
+                error = f"{type(exc).__name__}: {exc}"
             finally:
-                shutil.rmtree(workspace, ignore_errors=True)
+                shutil.rmtree(root, ignore_errors=True)
 
+        if error is not None or output is None:
+            self._fail(analysis_id, started, error or "Analysis was cancelled", attempts)
+            return
         with self.db.transaction() as session:
             record = session.get(AnalysisRequest, analysis_id)
             assert record is not None
@@ -171,15 +285,86 @@ class AnalysisService:
             record.confidence = output.confidence
             record.warnings = request.warnings
             record.context_files = list(request.files)
+            record.attempts = attempts
             record.completed_at = utcnow()
             record.duration_ms = int((time.monotonic() - started) * 1000)
-            if output.patch:
-                session.add(self._proposal(record, run, output.patch, output.patch_rationale))
+            if candidate is not None and candidate.diff:
+                session.add(self._proposal(record, run, candidate))
         metrics.ANALYSES_TOTAL.labels(provider.name, "completed").inc()
         log.info(
             "analysis completed",
-            extra={"analysis_id": analysis_id, "has_patch": bool(output.patch)},
+            extra={
+                "analysis_id": analysis_id,
+                "attempts": len(attempts),
+                "outcome": attempts[-1]["outcome"] if attempts else None,
+            },
         )
+
+    @staticmethod
+    def _elapsed(since: float) -> dict[str, int]:
+        return {"duration_ms": int((time.monotonic() - since) * 1000)}
+
+    @staticmethod
+    def _write_context(workspace: Path, files: dict[str, str]) -> None:
+        make_private_dir(workspace)
+        for rel, content in files.items():
+            target = resolve_within(workspace, rel)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content)
+
+    def _save_progress(self, analysis_id: int, attempts: list[dict[str, Any]]) -> None:
+        with self.db.transaction() as session:
+            record = session.get(AnalysisRequest, analysis_id)
+            assert record is not None
+            record.attempts = list(attempts)
+
+    def _check_patch(self, source_dir: Path, diff: str) -> list[str]:
+        """Static validation plus a dry-run apply against a copy of the snapshot."""
+        report = validate_patch(diff)
+        if not report.valid:
+            return list(report.errors)
+        with tempfile.TemporaryDirectory(
+            prefix="devflow-check-", dir=self.settings.resolved_data_dir
+        ) as tmp:
+            copy = Path(tmp) / "src"
+            shutil.copytree(source_dir, copy)
+            try:
+                apply_patch(copy, diff, check_only=True)
+            except ValidationFailed as exc:
+                return [exc.message]
+        return []
+
+    def _patched_source(self, repo: Repository, base_run: TestRun, diff: str) -> SourcePreparer:
+        repo_path = self.repos.path_of(repo)
+        sha = base_run.source_info.get("sha")
+        if not sha:
+            raise ValidationFailed("Base run has no recorded commit")
+
+        def prepare(dest: Path) -> dict[str, Any]:
+            info = git.snapshot(repo_path, sha, dest)
+            apply_patch(dest, diff)
+            return {"files": info.files, "bytes": info.bytes, "patched": True}
+
+        return prepare
+
+    def _test_feedback(self, diff: str, check: TestRun) -> str:
+        failures = self.runs.failures(check.id)[:MAX_FEEDBACK_FAILURES]
+        lines = [
+            f"DevFlow applied your change and ran the test suite in the sandbox: "
+            f"{check.passed} passed, {check.failed + check.errors} failed"
+            + (f" ({check.error_message})" if check.error_message else "")
+            + ".",
+            "",
+            "Tests still failing:",
+        ]
+        for failure in failures:
+            lines.append(
+                f"- {failure['nodeid'] or 'run'} [{failure['category']}] {failure['summary']}"
+            )
+            if failure["traceback"]:
+                lines.append("```\n" + failure["traceback"][-MAX_FEEDBACK_TRACEBACK:] + "\n```")
+        lines += ["", "Your previous change was:", "```diff", diff[:MAX_FEEDBACK_DIFF], "```"]
+        return "\n".join(lines)
 
     def _build_input(self, run: TestRun, repo: Repository) -> AnalysisInput:
         source_dir = self.settings.runs_dir / str(run.id) / "src"
@@ -219,41 +404,38 @@ class AnalysisService:
         return AnalysisInput(run.id, repo.name, repo.is_example, contexts, files, warnings)
 
     def _proposal(
-        self, record: AnalysisRequest, run: TestRun, diff: str, rationale: str | None
+        self, record: AnalysisRequest, run: TestRun, candidate: _Candidate
     ) -> PatchProposal:
-        report = validate_patch(diff)
-        errors = list(report.errors)
-        if report.valid:
-            source_dir = self.settings.runs_dir / str(run.id) / "src"
-            with tempfile.TemporaryDirectory(
-                prefix="devflow-check-", dir=self.settings.resolved_data_dir
-            ) as tmp:
-                copy = Path(tmp) / "src"
-                shutil.copytree(source_dir, copy)
-                try:
-                    apply_patch(copy, diff, check_only=True)
-                except ValidationFailed as exc:
-                    errors.append(exc.message)
+        report = validate_patch(candidate.diff)
         return PatchProposal(
             analysis_id=record.id,
             run_id=run.id,
-            status=PatchStatus.PROPOSED.value if not errors else PatchStatus.INVALID.value,
-            diff=normalize_diff(diff),
+            status=PatchStatus.INVALID.value if candidate.errors else PatchStatus.PROPOSED.value,
+            diff=normalize_diff(candidate.diff),
             files=report.files,
-            rationale=redact(rationale) if rationale else None,
+            rationale=redact(candidate.rationale) if candidate.rationale else None,
             risk_level=report.risk_level,
             risk_score=report.risk_score,
             risk_reasons=report.risk_reasons,
-            validation_errors=errors,
+            validation_errors=candidate.errors,
             lines_added=report.added,
             lines_removed=report.removed,
+            verification_run_id=candidate.verification_run_id,
+            attempt=candidate.attempt,
         )
 
-    def _fail(self, analysis_id: int, started: float, message: str) -> None:
+    def _fail(
+        self,
+        analysis_id: int,
+        started: float,
+        message: str,
+        attempts: list[dict[str, Any]] | None = None,
+    ) -> None:
         with self.db.transaction() as session:
             record = session.get(AnalysisRequest, analysis_id)
             assert record is not None
             record.status = AnalysisStatus.FAILED.value
+            record.attempts = attempts or []
             record.error = redact(message)[:2000]
             record.completed_at = utcnow()
             record.duration_ms = int((time.monotonic() - started) * 1000)
@@ -333,16 +515,7 @@ class AnalysisService:
         return self.get_patch(patch_id)
 
     def _start_retest(self, patch_id: int, repo: Repository, base_run: TestRun, diff: str) -> None:
-        repo_path = self.repos.path_of(repo)
-        sha = base_run.source_info.get("sha")
-        if not sha:
-            raise ValidationFailed("Base run has no recorded commit")
-
-        def prepare(dest: Path) -> dict[str, Any]:
-            info = git.snapshot(repo_path, sha, dest)
-            apply_patch(dest, diff)
-            return {"files": info.files, "bytes": info.bytes, "patched": True}
-
+        prepare = self._patched_source(repo, base_run, diff)
         run = self.runs.submit_patch_retest(repo, base_run, patch_id, prepare)
         with self.db.transaction() as session:
             patch = session.get(PatchProposal, patch_id)

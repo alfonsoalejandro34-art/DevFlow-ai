@@ -73,7 +73,7 @@ export function BuildsPage() {
             <tbody>
               {page.items.map((r) => (
                 <tr key={r.id} className="clickable" onClick={() => navigate(`/runs/${r.id}`)}>
-                  <td><Link to={`/runs/${r.id}`}>#{r.id}</Link>{r.kind === "patch_retest" && <span className="chip" style={{ marginLeft: 6 }}>patch #{r.patch_id}</span>}</td>
+                  <td><Link to={`/runs/${r.id}`}>#{r.id}</Link>{r.kind === "patch_retest" && <span className="chip" style={{ marginLeft: 6 }}>patch #{r.patch_id}</span>}{r.kind === "ai_verification" && <span className="chip" style={{ marginLeft: 6 }}>AI check</span>}</td>
                   <td className="secondary">{formatTime(r.created_at)}</td>
                   <td>{r.repository_name}</td>
                   <td className="mono" title={r.revision?.message}>{shortSha(r.source_info.sha)}</td>

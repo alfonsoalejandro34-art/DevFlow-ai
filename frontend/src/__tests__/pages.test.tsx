@@ -18,7 +18,7 @@ const basePatch: Patch = {
   id: 3, analysis_id: 1, run_id: 9, status: "proposed",
   diff: "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+b\n", files: ["x.py"], rationale: "fixes it",
   risk_level: "low", risk_score: 0, risk_reasons: ["small, localized change to non-test source"],
-  validation_errors: [], lines_added: 1, lines_removed: 1, retest_run_id: null, exported_branch: null,
+  validation_errors: [], lines_added: 1, lines_removed: 1, retest_run_id: null, verification_run_id: null, attempt: 1, exported_branch: null,
   exported_commit: null, created_at: "2026-11-12T10:00:00Z", decided_at: null, decisions: [], provider: "codex", is_ai: true,
 };
 
@@ -63,6 +63,18 @@ describe("PatchReview", () => {
     expect(post?.url).toBe("/api/patches/3/review");
     expect(JSON.parse(String(post?.init?.body))).toEqual({ decision: "approve", comment: "looks right" });
     expect(await screen.findByRole("link", { name: "run #11" })).toHaveAttribute("href", "/runs/11");
+  });
+
+  it("shows the sandbox pre-check result and the attempt number", async () => {
+    mockFetch((url) =>
+      url === "/api/runs/7"
+        ? { id: 7, status: "failed", failed: 2, errors: 0 }
+        : { ...basePatch, attempt: 3, verification_run_id: 7 },
+    );
+    renderWithRouter(<PatchReview patchId={3} />);
+    expect(await screen.findByText("attempt 3")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "run #7" })).toHaveAttribute("href", "/runs/7");
+    expect(await screen.findByText("2 test(s) still failing")).toBeInTheDocument();
   });
 
   it("hides review actions for invalid patches and shows why", async () => {

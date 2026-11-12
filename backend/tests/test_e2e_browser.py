@@ -171,6 +171,9 @@ def test_full_workflow_in_browser(server: str, page: Any) -> None:
     page.get_by_role("button", name="Analyze failures").click()
     expect(page.get_by_text(re.compile(r"\[SCRIPTED DEMO - NOT AI\]"))).to_be_visible()
     expect(page.get_by_text("not AI · demo")).to_be_visible()
+    # The candidate was checked in the sandbox before being shown for review.
+    expect(page.get_by_text("tests pass in sandbox", exact=True)).to_be_visible()
+    expect(page.get_by_text("all tests pass in sandbox")).to_be_visible()
 
     # --- review: nothing happens until the human approves; approval triggers a retest
     approve = page.get_by_role("button", name="Approve and retest")
@@ -178,7 +181,7 @@ def test_full_workflow_in_browser(server: str, page: Any) -> None:
     page.get_by_label(re.compile("Review comment")).fill("Approved in browser e2e test")
     approve.click()
     expect(page.get_by_text("all tests pass")).to_be_visible(timeout=60_000)
-    retest_link = page.get_by_role("link", name=re.compile(r"^run #\d+$"))
+    retest_link = page.locator("div.row", has_text="Retest:").get_by_role("link")
     retest_link.click()
 
     # --- retest run: passes, and the comparison shows all five failures fixed
@@ -190,10 +193,11 @@ def test_full_workflow_in_browser(server: str, page: Any) -> None:
     )
     expect(fixed).to_contain_text("5")
 
-    # --- build history: both runs listed; status filter narrows the table
+    # --- build history: original run, the AI pre-review check, and the retest
     nav(page, "Build history")
     rows = page.locator("table.table tbody tr")
-    expect(rows).to_have_count(2)
+    expect(rows).to_have_count(3)
+    expect(rows.filter(has_text="AI check")).to_have_count(1)
     page.get_by_label("Status filter").select_option("failed")
     expect(rows).to_have_count(1)
     expect(rows.first).to_contain_text("inventory-service")

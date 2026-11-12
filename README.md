@@ -36,6 +36,7 @@ output should never reach a codebase without review.
 | Run tests in isolation | Fresh Docker container per run: no network, read-only root FS, all capabilities dropped, non-root UID, CPU/memory/PID limits, wall-clock timeout |
 | Understand failures | JUnit parsing, per-test results, tracebacks, logs; failures classified (assertion, exception, syntax error, missing dependency, timeout, collection, infrastructure) and fingerprinted to track repeats and resolutions |
 | Diagnose | Pluggable providers: **Claude Code CLI**, **Codex CLI**, a **rule-based** non-AI diagnoser, and a clearly-labelled **scripted demo** provider |
+| Self-correct | Agent mode: the CLI edits a sandboxed repo copy; each candidate is validated and test-run in Docker, and failures are fed back for up to N attempts before you see it |
 | Propose fixes safely | Patches are statically validated (paths, binaries, symlinks, renames), risk-scored (e.g. "modifies tests", "adds subprocess calls"), dry-run applied |
 | Human approval | Nothing is applied without an explicit decision; approval retests the patch in a sandbox against a fresh snapshot — the repository is untouched |
 | Export | After a passing retest, an explicit, confirmed action writes the change to a **new branch** using Git plumbing (working tree, index, and HEAD untouched; nothing pushed) |
@@ -200,15 +201,43 @@ as "SCRIPTED DEMO - NOT AI" everywhere.
 
 ## AI integration
 
-| Provider | Invocation | Isolation |
-|---|---|---|
-| `claude-code` | `claude -p --output-format json --tools "" --strict-mcp-config --no-session-persistence` | **No tools at all**: the model can only return text |
-| `codex` | `codex exec --sandbox read-only --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C <workspace> -o <file>` | Read-only sandbox, no network for commands; can still *read* files (residual risk) |
-| `heuristic` | built in | deterministic rules, no patches |
-| `demo` | built in | pre-written patches, example repos only |
+### Agent mode and the self-correcting loop (default)
 
-- Both CLIs run in a throwaway workspace containing only the selected context files,
-  with a scrubbed environment. `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` are **removed** by
+1. DevFlow copies the failing run's snapshot into a throwaway workspace. Agent
+   instruction and config files a repository could plant (`CLAUDE.md`, `AGENTS.md`,
+   `.claude/`, `.codex/`, `.mcp.json`) are left out.
+2. The agent **edits files in that copy**. DevFlow computes the diff itself in Python
+   (no git runs in the agent's directory), so a malformed model-written diff can't
+   happen.
+3. The diff is validated and dry-run applied, then **run in the Docker sandbox** as an
+   "AI check" run.
+4. If anything fails, the errors, failing tests, and tracebacks go back to the agent,
+   which starts again from a clean copy. This repeats up to *N* attempts (default 3,
+   configurable).
+5. You see the final candidate with its full attempt history and its sandbox result.
+   **You still approve or reject it.** Approval triggers the usual retest, and only an
+   explicit export writes a branch.
+
+| Provider | Agent mode invocation | What it can do (verified live) |
+|---|---|---|
+| `claude-code` | `claude -p --restricted --tools Read,Edit,Write,Glob,Grep --permission-mode acceptEdits --strict-mcp-config` | Read and edit files in the workspace. No command-running tools, no reads outside the workspace, ignores repository settings and hooks |
+| `codex` | `codex exec --sandbox workspace-write` (network off) `--disable shell_tool --disable unified_exec` (+ 8 other tools disabled) `--ignore-user-config --ignore-rules --ephemeral` | Edit files in the workspace through its patch tool only. No shell and no file reads, so it works from the context DevFlow provides |
+| `heuristic` | built in | Deterministic rules, no patches |
+| `demo` | built in | Pre-written patches, example repos only; one attempt |
+
+Text mode (Settings → AI integration) instead asks the model to return a diff. Claude
+then has no tools at all, and Codex runs in the read-only sandbox with the same tools
+disabled.
+
+**Live results** (Docker runner, `inventory-service`, 4 seeded bugs): in agent mode,
+**Claude Code** produced a fix that passed the sandbox check on attempt 1 in 18.2 s, and
+so did **Codex** in 16.6 s. Both fixes were low risk with no validation errors. Earlier,
+in text mode, Codex's diff had been malformed and was rejected. The feedback path
+(attempt 2 and beyond) is covered by tests with a scripted agent and real sandbox runs;
+both live models succeeded on the first try, so a real model has not yet been seen
+correcting itself.
+
+- Both CLIs run in a throwaway workspace with a scrubbed environment. `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` are **removed** by
   default, so analyses use your existing CLI login (subscription) and never silently
   incur metered API charges (`DEVFLOW_AI_PASS_API_KEYS=true` to opt in).
 - No approval-bypass flag (`--dangerously-*`, `--full-auto`, `bypassPermissions`, …) is
@@ -288,7 +317,9 @@ Methodology and both batches: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 | App image (`Dockerfile`) | Built and run: serves the dashboard, enforces auth, migrates, installs examples |
 | `compose.yaml` with the Docker-socket mount | **Not run**: it grants the container root-equivalent Docker access (documented trade-off) |
 | GitHub Actions workflow | Verified: [first run](https://github.com/alfonsoalejandro34-art/DevFlow-ai/actions/runs/43325815665) passed all 5 jobs (backend on 3.12 and 3.14, Docker sandbox 5/5 on Linux, frontend, security) |
-| Claude Code and Codex through the Docker runner | AI calls were verified earlier on local-runner runs. The analysis path doesn't depend on the runner, and it was not re-run |
+| Claude Code and Codex in agent mode through the Docker runner | Verified live: both fixed all 4 bugs on attempt 1, with candidates passing their sandbox check runs (#83, #84) |
+| Agent tool confinement (edit works; shell and outside reads blocked) | Verified live with capability probes for both CLIs |
+| Retry loop (feedback → corrected attempt) | Verified with a scripted agent and real sandbox runs. Not yet observed with a live model, since both succeeded first time |
 
 ## Documentation
 
@@ -306,7 +337,9 @@ Methodology and both batches: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 - Sandbox containers have no network, so dependencies must be in the runner image
   (`runner/requirements.txt`); repos needing other packages fail as "missing dependency".
 - Single-user, single-process design (in-process job pool, SQLite). Not multi-tenant.
-- Codex's read-only sandbox does not prevent reads of files the user can read.
+- Agent mode trusts the CLIs' own sandboxes (Claude Code `--restricted`, Codex's
+  seatbelt sandbox on macOS) to confine edits to the workspace. Those boundaries were
+  probed live, but they belong to the vendors, not to DevFlow.
 - Rule-based diagnosis explains failures but does not generate patches.
 
 ## Future improvements

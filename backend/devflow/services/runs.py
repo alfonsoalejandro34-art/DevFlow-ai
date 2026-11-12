@@ -115,7 +115,38 @@ class RunService:
             patch_id=patch_id,
         )
 
-    def _create_and_enqueue(
+    def run_verification(
+        self, repo: Repository, base_run: TestRun, prepare: SourcePreparer, label: str
+    ) -> TestRun:
+        """Run a candidate patch in the sandbox *synchronously* on the caller's thread.
+
+        Used by the analysis job's self-correcting loop. Running inline (rather than
+        queueing) means an analysis never waits on a pool slot it is itself occupying.
+        """
+        run = self._create(
+            repo=repo,
+            revision_id=base_run.revision_id,
+            kind=RunKind.AI_VERIFICATION,
+            active_key=f"{repo.id}:verify:{label}",
+            trigger="ai-verify",
+            source_info={"sha": base_run.source_info.get("sha"), "verification": label},
+            parent_run_id=base_run.id,
+        )
+        key = f"run:{run.id}"
+        cancel = self.jobs.register(key)
+        try:
+            self._execute(run.id, prepare, cancel)
+        finally:
+            self.jobs.unregister(key)
+        return self.get(run.id)
+
+    def _create_and_enqueue(self, *, prepare: SourcePreparer, **fields: Any) -> TestRun:
+        run = self._create(**fields)
+        run_id = run.id
+        self.jobs.submit(f"run:{run_id}", lambda cancel: self._execute(run_id, prepare, cancel))
+        return run
+
+    def _create(
         self,
         *,
         repo: Repository,
@@ -123,7 +154,6 @@ class RunService:
         kind: RunKind,
         active_key: str,
         trigger: str,
-        prepare: SourcePreparer,
         source_info: dict[str, Any],
         parent_run_id: int | None = None,
         patch_id: int | None = None,
@@ -155,8 +185,6 @@ class RunService:
         log.info(
             "run queued", extra={"run_id": run.id, "repository_id": repo.id, "kind": kind.value}
         )
-        run_id = run.id
-        self.jobs.submit(f"run:{run_id}", lambda cancel: self._execute(run_id, prepare, cancel))
         return run
 
     # ---- execution ------------------------------------------------------------------
@@ -293,7 +321,9 @@ class RunService:
             run.skipped = sum(t.outcome == "skipped" for t in parsed)
             self._finish(session, run, status, message)
             session.flush()
-            self._resolve_previous_failures(session, run, parsed)
+            # A candidate patch passing its check is not a resolution; only real runs count.
+            if run.kind != RunKind.AI_VERIFICATION.value:
+                self._resolve_previous_failures(session, run, parsed)
         return status
 
     def _finish(self, session: Any, run: TestRun, status: RunStatus, message: str | None) -> None:

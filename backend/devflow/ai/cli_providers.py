@@ -1,14 +1,18 @@
 """Claude Code and Codex CLI providers.
 
-Both run non-interactively in a throwaway workspace directory that contains only the
-context files, with the prompt on stdin and a scrubbed environment. Neither is ever
-given an approval-bypass flag.
+Both run non-interactively in a throwaway workspace directory (only the context files in
+text mode, or a copy of the repository in agent mode), with the prompt on stdin and a
+scrubbed environment. Neither is ever given an approval-bypass flag.
 
-* Claude Code: ``claude -p --tools ""`` disables every tool, so the model can only
-  return text. MCP servers are excluded with ``--strict-mcp-config``.
-* Codex: ``codex exec --sandbox read-only``. Codex's sandbox blocks writes and network
-  access, but it does not stop shell commands from *reading* files the user can read.
-  See docs/SECURITY.md (residual risks).
+* Claude Code: ``claude -p --restricted``. Text mode has no tools at all; agent mode has
+  only file tools (Read/Edit/Write/Glob/Grep) confined to the workspace. ``--restricted``
+  removes command-running tools and ignores settings files a repository could plant.
+* Codex: ``codex exec`` with its shell and every other non-editing tool disabled. Text
+  mode uses the read-only sandbox; agent mode uses workspace-write with no network, so
+  Codex can only edit files in the workspace through its patch tool.
+
+Both configurations were verified live (see docs/SECURITY.md): edits inside the
+workspace succeed, shell commands are unavailable, and files outside cannot be read.
 """
 
 from __future__ import annotations
@@ -26,6 +30,26 @@ from devflow.runners.base import Availability
 from devflow.security.commands import minimal_env, run_command
 
 _AUTH_CACHE_SECONDS = 60
+# Claude Code file tools for agent mode (no Bash or other code-running tools).
+AGENT_TOOLS = "Read,Edit,Write,Glob,Grep"
+# With these off, Codex can only edit files through its patch tool: no shell (verified
+# live), no browser/computer use, apps, plugins, hooks, sub-agents, or image generation.
+CODEX_DISABLED_FEATURES = tuple(
+    arg
+    for feature in (
+        "shell_tool",
+        "unified_exec",
+        "apps",
+        "browser_use",
+        "computer_use",
+        "in_app_browser",
+        "hooks",
+        "plugins",
+        "multi_agent",
+        "image_generation",
+    )
+    for arg in ("--disable", feature)
+)
 _API_KEY_VARS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY")
 
 
@@ -43,6 +67,8 @@ class _CliProvider:
     logical = ""
     is_ai = True
     generates_patches = True
+    supports_agent_mode = True
+    accepts_feedback = True
 
     def __init__(self, binary: str, timeout: int, pass_api_keys: bool) -> None:
         self.binary = binary
@@ -115,16 +141,28 @@ class ClaudeCodeProvider(_CliProvider):
             return False, "Claude Code is not logged in (run `claude auth login`)"
         return True, f"logged in via {status.get('authMethod', 'unknown')}"
 
-    def analyze(self, request: AnalysisInput, workspace: Path) -> AnalysisOutput:
+    def analyze(
+        self,
+        request: AnalysisInput,
+        workspace: Path,
+        *,
+        agent: bool = False,
+        feedback: str | None = None,
+    ) -> AnalysisOutput:
+        # --restricted removes every command/code-running tool, ignores user/project/local
+        # settings files (so a repository cannot install hooks), and confines file tools
+        # to the working directory. Verified live: edits work, shell and outside reads fail.
+        tools = AGENT_TOOLS if agent else ""
         args = [
             "-p",
             "--output-format", "json",
-            "--tools", "",
+            "--restricted",
+            "--tools", tools,
+            "--permission-mode", "acceptEdits" if agent else "default",
             "--strict-mcp-config",
             "--no-session-persistence",
-            "--permission-mode", "default",
         ]  # fmt: skip
-        stdout = self._run(args, build_prompt(request), workspace)
+        stdout = self._run(args, build_prompt(request, agent=agent, feedback=feedback), workspace)
         try:
             envelope = json.loads(stdout)
         except json.JSONDecodeError as exc:
@@ -158,11 +196,21 @@ class CodexProvider(_CliProvider):
             return False, "Codex is not logged in (run `codex login`)"
         return True, text.splitlines()[0][:80] if text else None
 
-    def analyze(self, request: AnalysisInput, workspace: Path) -> AnalysisOutput:
-        last_message = workspace / "last_message.txt"
+    def analyze(
+        self,
+        request: AnalysisInput,
+        workspace: Path,
+        *,
+        agent: bool = False,
+        feedback: str | None = None,
+    ) -> AnalysisOutput:
+        # Written next to (not inside) the workspace so it is never part of the diff.
+        last_message = workspace.parent / f"{workspace.name}.codex-last-message.txt"
         args = [
             "exec",
-            "--sandbox", "read-only",
+            "--sandbox", "workspace-write" if agent else "read-only",
+            "-c", "sandbox_workspace_write.network_access=false",
+            *CODEX_DISABLED_FEATURES,
             "--ephemeral",
             "--skip-git-repo-check",
             "--ignore-user-config",
@@ -172,7 +220,7 @@ class CodexProvider(_CliProvider):
             "-o", str(last_message),
             "-",
         ]  # fmt: skip
-        self._run(args, build_prompt(request), workspace)
+        self._run(args, build_prompt(request, agent=agent, feedback=feedback), workspace)
         if not last_message.is_file():
             raise ProviderError("Codex did not produce a final message")
         return parse_response(last_message.read_text(errors="replace"))

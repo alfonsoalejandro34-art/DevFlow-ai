@@ -20,12 +20,19 @@ from devflow.database.models import (
     Failure,
     PatchProposal,
     Repository,
+    RunKind,
     TestRun,
     utcnow,
 )
 from devflow.database.session import Database
 
 _FAILED = ("failed", "error", "timeout")
+# AI verification runs are internal checks of candidate patches, not builds; counting
+# them would make every retry of the self-correcting loop look like a failed build.
+_REAL_RUN = TestRun.kind != RunKind.AI_VERIFICATION.value
+_REAL_FAILURE = Failure.run_id.not_in(
+    select(TestRun.id).where(TestRun.kind == RunKind.AI_VERIFICATION.value)
+)
 
 
 def _mean(values: list[float]) -> float | None:
@@ -42,14 +49,15 @@ class AnalyticsService:
 
     def overview(self) -> dict[str, Any]:
         with self.db.session() as session:
-            runs = list(session.scalars(select(TestRun)))
+            runs = list(session.scalars(select(TestRun).where(_REAL_RUN)))
             names = dict(session.execute(select(Repository.id, Repository.name)).all())
             analyses = list(session.scalars(select(AnalysisRequest)))
             patches = list(session.scalars(select(PatchProposal)))
-            failures = list(session.scalars(select(Failure)))
+            failures = list(session.scalars(select(Failure).where(_REAL_FAILURE)))
             repeated = session.scalar(
                 select(func.count()).select_from(
                     select(Failure.signature)
+                    .where(_REAL_FAILURE)
                     .group_by(Failure.signature)
                     .having(func.count(func.distinct(Failure.run_id)) > 1)
                     .subquery()
@@ -150,10 +158,14 @@ class AnalyticsService:
         with self.db.session() as session:
             runs = list(
                 session.scalars(
-                    select(TestRun).where(TestRun.created_at >= since).order_by(TestRun.id)
+                    select(TestRun)
+                    .where(TestRun.created_at >= since, _REAL_RUN)
+                    .order_by(TestRun.id)
                 )
             )
-            failures = list(session.scalars(select(Failure).where(Failure.created_at >= since)))
+            failures = list(
+                session.scalars(select(Failure).where(Failure.created_at >= since, _REAL_FAILURE))
+            )
             patches = list(
                 session.scalars(select(PatchProposal).where(PatchProposal.created_at >= since))
             )

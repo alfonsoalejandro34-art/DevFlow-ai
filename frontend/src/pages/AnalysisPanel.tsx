@@ -4,7 +4,8 @@ import { StatusBadge } from "../components/StatusBadge";
 import { Banner, Card, Empty, ErrorBanner, Loading } from "../components/ui";
 import { post } from "../services/api";
 import { formatMs, formatTime } from "../services/format";
-import type { Analysis, Provider, Run } from "../services/types";
+import { Link } from "react-router-dom";
+import type { Analysis, Attempt, Provider, Run } from "../services/types";
 import { useApi } from "../services/useApi";
 import { PatchReview } from "./PatchReview";
 
@@ -77,7 +78,8 @@ function AnalysisCard({ analysis: a }: { analysis: Analysis }) {
   return (
     <Card
       title={<span className="row">Analysis #{a.id} <StatusBadge status={a.status} />
-        <span className={`badge ${a.is_ai ? "badge-info" : ""}`}>{a.is_ai ? "AI" : "not AI"} · {a.provider}</span></span>}
+        <span className={`badge ${a.is_ai ? "badge-info" : ""}`}>{a.is_ai ? "AI" : "not AI"} · {a.provider}</span>
+        {a.mode === "agent" && <span className="chip" title="The agent edited a sandboxed copy of the repository; DevFlow computed the diff">agent mode</span>}</span>}
       subtitle={`${formatTime(a.created_at)} · ${formatMs(a.duration_ms)}${a.confidence ? ` · confidence ${a.confidence}` : ""}`}
     >
       <div className="stack" style={{ gap: 12 }}>
@@ -87,6 +89,7 @@ function AnalysisCard({ analysis: a }: { analysis: Analysis }) {
             <strong>Possible prompt injection in repository content:</strong> {a.warnings.join("; ")}. Review any proposed patch with extra care.
           </Banner>
         )}
+        {a.attempts.length > 0 && <AttemptTimeline attempts={a.attempts} running={a.status === "running"} />}
         {a.root_cause && (
           <div>
             <h3>Root cause</h3>
@@ -105,5 +108,48 @@ function AnalysisCard({ analysis: a }: { analysis: Analysis }) {
         {a.patch_ids.map((id) => <PatchReview key={id} patchId={id} />)}
       </div>
     </Card>
+  );
+}
+
+const OUTCOME: Record<string, { label: string; tone: string }> = {
+  verified: { label: "tests pass in sandbox", tone: "passed" },
+  valid: { label: "valid (not test-verified)", tone: "approved" },
+  tests_failed: { label: "tests still failing", tone: "failed" },
+  invalid: { label: "rejected by validation", tone: "invalid" },
+  no_change: { label: "no change proposed", tone: "cancelled" },
+  provider_error: { label: "provider error", tone: "error" },
+};
+
+function AttemptTimeline({ attempts, running }: { attempts: Attempt[]; running: boolean }) {
+  return (
+    <div>
+      <h3>Attempts</h3>
+      <ol className="stack small" style={{ gap: 6, margin: "6px 0 0", paddingLeft: 20 }}>
+        {attempts.map((t) => {
+          const outcome = OUTCOME[t.outcome] ?? { label: t.outcome.replace(/_/g, " "), tone: "error" };
+          return (
+            <li key={t.attempt}>
+              <div className="row">
+                <StatusBadge status={outcome.tone} label={outcome.label} />
+                {t.verification_run_id && (
+                  <Link to={`/runs/${t.verification_run_id}`}>
+                    check run #{t.verification_run_id}
+                    {t.passed !== undefined && ` · ${t.passed} passed, ${t.failed} failed`}
+                  </Link>
+                )}
+                {t.files && t.files.length > 0 && <span className="muted mono">{t.files.join(", ")}</span>}
+                {t.duration_ms !== undefined && <span className="muted">{formatMs(t.duration_ms)}</span>}
+              </div>
+              {t.errors?.map((e) => <div key={e} className="muted">• {e}</div>)}
+              {t.detail && <div className="muted">{t.detail}</div>}
+              {t.excluded_files && t.excluded_files.length > 0 && (
+                <div className="muted">Hidden from the agent: {t.excluded_files.join(", ")}</div>
+              )}
+            </li>
+          );
+        })}
+        {running && <li><StatusBadge status="running" label={`attempt ${attempts.length + 1} in progress`} /></li>}
+      </ol>
+    </div>
   );
 }

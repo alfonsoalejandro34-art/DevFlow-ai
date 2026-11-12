@@ -29,6 +29,12 @@ class RuntimeConfig(BaseModel):
     pids_limit: int = Field(default=256, ge=32, le=2048)
     ai_enabled: bool = True
     ai_provider: AIProviderName = "heuristic"
+    # "agent": AI CLIs edit a sandboxed repository copy; "text": they return a diff.
+    ai_mode: Literal["agent", "text"] = "agent"
+    # Self-correcting loop: candidate patches are validated and run in the sandbox, and
+    # failures are fed back to the agent, up to this many attempts.
+    ai_max_attempts: int = Field(default=3, ge=1, le=5)
+    ai_verify_patches: bool = True
     repository_roots: list[str] = Field(default_factory=list, max_length=20)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 

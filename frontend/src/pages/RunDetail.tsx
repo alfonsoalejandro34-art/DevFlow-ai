@@ -41,6 +41,7 @@ export function RunDetailPage() {
             <h1>Run #{r.id}</h1>
             <StatusBadge status={r.status} />
             {r.kind === "patch_retest" && <span className="chip">retest of patch #{r.patch_id}</span>}
+            {r.kind === "ai_verification" && <span className="chip">AI candidate check (not a build)</span>}
           </div>
           <p>
             <Link to={`/builds?repository=${r.repository_id}`}>{r.repository_name}</Link>

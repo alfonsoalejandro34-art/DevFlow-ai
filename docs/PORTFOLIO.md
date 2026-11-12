@@ -24,6 +24,11 @@ OpenTelemetry traces, and GitHub Actions CI.
   fallback. Agents get no tools or a read-only sandbox, redacted minimal context, and
   prompt-injection screening. API keys are stripped so analyses never incur metered
   charges. Verified live: both identified all 4 seeded bugs, in 24 s and 18 s.
+- Built an **agent-mode, self-correcting fix loop**. Claude Code and Codex edit a
+  sandboxed repository copy (edit-only tools, verified with live capability probes).
+  DevFlow computes the diff, validates it, and runs it in Docker, feeding failures back
+  for up to N attempts. Both agents fixed all 4 seeded bugs on attempt 1 (16–18 s),
+  where Codex's text-mode diff had previously been malformed.
 - Implemented a **patch safety pipeline**: path/binary/symlink validation, a risk score
   that flags test weakening and dangerous calls, dry-run apply, human approval,
   sandboxed retest on a fresh snapshot, and export to a new Git branch via plumbing,
@@ -56,8 +61,9 @@ OpenTelemetry traces, and GitHub Actions CI.
    which is why DevFlow never runs it.
 3. **AI is advisory, never authoritative.** Claude gets `--tools ""`, so it can only
    return text. The real boundary is human approval plus a sandboxed retest, not
-   prompt-injection detection. Codex's read-only sandbox still allows reads; that is
-   documented as a residual risk.
+   prompt-injection detection. In agent mode both CLIs get file-edit tools only. I
+   proved that live with probes (edit works, shell and outside reads blocked) before
+   building on it.
 4. **Duplicate-job prevention without locks.** A nullable `UNIQUE active_key` column
    makes the database the arbiter. Eight concurrent submissions produce exactly one
    success, which is tested with a thread barrier.

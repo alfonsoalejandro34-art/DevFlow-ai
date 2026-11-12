@@ -40,11 +40,20 @@ class HeuristicProvider:
     label = "Rule-based diagnostics (no AI)"
     is_ai = False
     generates_patches = False
+    supports_agent_mode = False
+    accepts_feedback = False
 
     def availability(self) -> Availability:
         return Availability(True, "built in")
 
-    def analyze(self, request: AnalysisInput, workspace: Path) -> AnalysisOutput:
+    def analyze(
+        self,
+        request: AnalysisInput,
+        workspace: Path,
+        *,
+        agent: bool = False,
+        feedback: str | None = None,
+    ) -> AnalysisOutput:
         if not request.failures:
             return AnalysisOutput(
                 "No failures recorded for this run", "Nothing to diagnose.", "high"

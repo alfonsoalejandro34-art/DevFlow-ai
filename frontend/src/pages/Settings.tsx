@@ -95,6 +95,21 @@ export function SettingsPage() {
                 {providers.data?.map((p) => <option key={p.name} value={p.name}>{p.label}</option>)}
               </select>
             </label>
+            <label className="field">How AI providers fix code
+              <select className="select" value={form.ai_mode} onChange={(e) => set("ai_mode", e.target.value as RuntimeConfig["ai_mode"])}>
+                <option value="agent">Agent mode: edit a sandboxed copy, DevFlow computes the diff</option>
+                <option value="text">Text mode: provider writes a diff</option>
+              </select>
+            </label>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+              <label className="field">Max attempts <span className="field-hint">1–5, failures are fed back</span>
+                <input className="input" type="number" min={1} max={5} value={form.ai_max_attempts} onChange={(e) => set("ai_max_attempts", Number(e.target.value))} />
+              </label>
+              <label className="row" style={{ alignSelf: "end", height: 32 }}>
+                <input type="checkbox" checked={form.ai_verify_patches} onChange={(e) => set("ai_verify_patches", e.target.checked)} />
+                Test candidates in the sandbox
+              </label>
+            </div>
             <div className="table-wrap">
               <table className="table">
                 <thead><tr><th>Provider</th><th>Status</th></tr></thead>

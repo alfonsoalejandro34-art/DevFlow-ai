@@ -68,6 +68,8 @@ ACTIVE_STATUSES = (RunStatus.QUEUED.value, RunStatus.RUNNING.value)
 class RunKind(enum.StrEnum):
     REVISION = "revision"
     PATCH_RETEST = "patch_retest"
+    # Sandboxed check of a candidate AI patch before it is shown for review.
+    AI_VERIFICATION = "ai_verification"
 
 
 class FailureCategory(enum.StrEnum):
@@ -250,6 +252,10 @@ class AnalysisRequest(Base):
     # Prompt-injection indicators found in the repository content sent to the provider.
     warnings: Mapped[list[Any]] = mapped_column(default=list)
     context_files: Mapped[list[Any]] = mapped_column(default=list)
+    # "text": the provider returns a diff; "agent": it edits a sandbox copy and DevFlow
+    # computes the diff. Each attempt of the self-correcting loop is recorded here.
+    mode: Mapped[str] = mapped_column(String(10), default="text")
+    attempts: Mapped[list[Any]] = mapped_column(default=list)
 
     patches: Mapped[list[PatchProposal]] = relationship(back_populates="analysis")
 
@@ -275,6 +281,10 @@ class PatchProposal(Base):
     retest_run_id: Mapped[int | None] = mapped_column(
         ForeignKey("test_runs.id", ondelete="SET NULL")
     )
+    verification_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("test_runs.id", ondelete="SET NULL")
+    )
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
     exported_branch: Mapped[str | None] = mapped_column(String(255))
     exported_commit: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

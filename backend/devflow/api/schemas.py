@@ -166,6 +166,8 @@ class PatchOut(ORM):
     lines_added: int
     lines_removed: int
     retest_run_id: int | None
+    verification_run_id: int | None
+    attempt: int
     exported_branch: str | None
     exported_commit: str | None
     created_at: datetime
@@ -190,6 +192,8 @@ class AnalysisOut(ORM):
     error: str | None
     warnings: list[str]
     context_files: list[str]
+    mode: str
+    attempts: list[dict[str, Any]]
     patch_ids: list[int] = []
 
 

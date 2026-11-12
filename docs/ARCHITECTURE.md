@@ -81,6 +81,27 @@ files their tracebacks reference, plus the modules under test, with secrets reda
 It writes only those files to a throwaway workspace and calls a provider. Any returned
 diff becomes a `PatchProposal` after validation, risk scoring, and a dry-run `git apply`.
 
+**Agent mode and the self-correcting loop** (`AnalysisService._execute`):
+
+```
+for attempt in 1..N:                      N = ai_max_attempts (1 for non-AI providers)
+    workspace = copy of runs/<id>/src minus agent-control files
+    provider.analyze(agent=True, feedback=previous problems)   # agent edits workspace
+    diff = difflib(snapshot, workspace)    # computed by DevFlow, never by the agent
+    problems = validate_patch(diff) + dry-run git apply
+    if problems:            feedback = "rejected before tests" + problems + diff; continue
+    check = RunService.run_verification(...)   # sandboxed run, kind=ai_verification,
+                                               # executed inline on the analysis thread
+    if check passed:        stop (candidate verified)
+    else:                   feedback = counts + failing tests + tracebacks + diff
+record every attempt on the analysis; the last candidate becomes a PatchProposal
+(attempt number + verification_run_id) awaiting human review
+```
+
+Verification runs execute inline rather than being queued. That way an analysis can
+never wait on a pool slot it is itself occupying. They are cancellable through the same
+job registry, never resolve failures, and are excluded from build metrics.
+
 **Patch workflow**:
 
 ```

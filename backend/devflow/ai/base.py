@@ -54,7 +54,23 @@ class Provider(Protocol):
     label: str
     is_ai: bool
     generates_patches: bool
+    # Can edit a repository copy directly (agent mode) instead of returning a diff.
+    supports_agent_mode: bool
+    # Can use feedback about a failed attempt to produce a better one.
+    accepts_feedback: bool
 
     def availability(self) -> Availability: ...
 
-    def analyze(self, request: AnalysisInput, workspace: Path) -> AnalysisOutput: ...
+    def analyze(
+        self,
+        request: AnalysisInput,
+        workspace: Path,
+        *,
+        agent: bool = False,
+        feedback: str | None = None,
+    ) -> AnalysisOutput:
+        """Diagnose the failures. In agent mode ``workspace`` is a full repository copy
+        the provider may edit; otherwise it holds only the context files and any fix
+        is returned as ``AnalysisOutput.patch``. ``feedback`` describes why the previous
+        attempt was rejected."""
+        ...

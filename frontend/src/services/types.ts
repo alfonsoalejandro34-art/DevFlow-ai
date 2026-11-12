@@ -36,7 +36,7 @@ export interface Run {
   id: number;
   repository_id: number;
   repository_name: string | null;
-  kind: "revision" | "patch_retest";
+  kind: "revision" | "patch_retest" | "ai_verification";
   parent_run_id: number | null;
   patch_id: number | null;
   status: RunStatus;
@@ -112,7 +112,22 @@ export interface Analysis {
   error: string | null;
   warnings: string[];
   context_files: string[];
+  mode: "agent" | "text";
+  attempts: Attempt[];
   patch_ids: number[];
+}
+
+export interface Attempt {
+  attempt: number;
+  outcome: "verified" | "valid" | "tests_failed" | "invalid" | "no_change" | "provider_error" | string;
+  duration_ms?: number;
+  files?: string[];
+  errors?: string[];
+  detail?: string;
+  verification_run_id?: number;
+  passed?: number;
+  failed?: number;
+  excluded_files?: string[];
 }
 
 export interface Decision {
@@ -138,6 +153,8 @@ export interface Patch {
   lines_added: number;
   lines_removed: number;
   retest_run_id: number | null;
+  verification_run_id: number | null;
+  attempt: number;
   exported_branch: string | null;
   exported_commit: string | null;
   created_at: string;
@@ -272,6 +289,9 @@ export interface RuntimeConfig {
   pids_limit: number;
   ai_enabled: boolean;
   ai_provider: "heuristic" | "claude-code" | "codex" | "demo";
+  ai_mode: "agent" | "text";
+  ai_max_attempts: number;
+  ai_verify_patches: boolean;
   repository_roots: string[];
   log_level: "DEBUG" | "INFO" | "WARNING" | "ERROR";
 }

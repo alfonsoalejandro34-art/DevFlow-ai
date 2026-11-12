@@ -5,7 +5,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { Banner, ErrorBanner, Loading } from "../components/ui";
 import { post } from "../services/api";
 import { formatTime, shortSha } from "../services/format";
-import type { Patch } from "../services/types";
+import type { Patch, Run } from "../services/types";
 import { useApi } from "../services/useApi";
 
 const LIVE = new Set(["retesting"]);
@@ -48,11 +48,20 @@ export function PatchReview({ patchId }: { patchId: number }) {
             <StatusBadge status={p.risk_level} label={`${p.risk_level} risk · ${p.risk_score}`} />
             <span className="small muted">+{p.lines_added} −{p.lines_removed} in {p.files.length} file(s)</span>
           </div>
-          {p.is_ai === false && <span className="chip">scripted / non-AI</span>}
+          <div className="row">
+            {p.attempt > 1 && <span className="chip">attempt {p.attempt}</span>}
+            {p.is_ai === false && <span className="chip">scripted / non-AI</span>}
+          </div>
         </div>
         <ErrorBanner error={error} />
         {p.validation_errors.length > 0 && (
           <Banner tone="error"><strong>Rejected by validation:</strong> {p.validation_errors.join("; ")}</Banner>
+        )}
+        {p.verification_run_id && (
+          <div className="row small">
+            Pre-review check: <Link to={`/runs/${p.verification_run_id}`}>run #{p.verification_run_id}</Link>
+            <VerificationBadge runId={p.verification_run_id} />
+          </div>
         )}
         {p.rationale && <p style={{ margin: 0 }} className="secondary"><strong>Why this should work:</strong> {p.rationale}</p>}
         <ul className="small secondary" style={{ margin: 0, paddingLeft: 18 }}>
@@ -124,5 +133,15 @@ export function PatchReview({ patchId }: { patchId: number }) {
         )}
       </div>
     </div>
+  );
+}
+
+function VerificationBadge({ runId }: { runId: number }) {
+  const run = useApi<Run>(`/api/runs/${runId}`);
+  if (!run.data) return null;
+  return run.data.status === "passed" ? (
+    <StatusBadge status="passed" label="all tests pass in sandbox" />
+  ) : (
+    <StatusBadge status="failed" label={`${run.data.failed + run.data.errors} test(s) still failing`} />
   );
 }

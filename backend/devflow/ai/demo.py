@@ -20,6 +20,8 @@ class DemoProvider:
     label = "Scripted demo patches (not AI)"
     is_ai = False
     generates_patches = True
+    supports_agent_mode = False
+    accepts_feedback = False
 
     def __init__(self, fixes_dir: Path) -> None:
         self.fixes_dir = fixes_dir
@@ -29,7 +31,14 @@ class DemoProvider:
             return Availability(False, "demo fixes directory missing")
         return Availability(True, "bundled example repositories only")
 
-    def analyze(self, request: AnalysisInput, workspace: Path) -> AnalysisOutput:
+    def analyze(
+        self,
+        request: AnalysisInput,
+        workspace: Path,
+        *,
+        agent: bool = False,
+        feedback: str | None = None,
+    ) -> AnalysisOutput:
         manifest_path = self.fixes_dir / request.repository_name / "manifest.json"
         if not request.is_example or not manifest_path.is_file():
             raise ProviderError(

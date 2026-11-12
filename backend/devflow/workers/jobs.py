@@ -48,6 +48,19 @@ class JobManager:
             self._futures[key] = self._pool.submit(wrapped)
         return event
 
+    def register(self, key: str) -> threading.Event:
+        """Track work running on the caller's thread so ``cancel`` can reach it."""
+        event = threading.Event()
+        with self._lock:
+            self._cancel[key] = event
+        ACTIVE_JOBS.inc()
+        return event
+
+    def unregister(self, key: str) -> None:
+        with self._lock:
+            self._cancel.pop(key, None)
+        ACTIVE_JOBS.dec()
+
     def cancel(self, key: str) -> bool:
         with self._lock:
             event = self._cancel.get(key)

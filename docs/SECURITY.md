@@ -97,10 +97,35 @@ be enabled from the environment, with *both* `DEVFLOW_RUNNER=local` and
 - **Minimal context.** Only the failing tests' tracebacks and the files they reference
   (at most 8 files / 60 KB), copied into a throwaway `0700` workspace and redacted. The
   workspace is deleted afterwards.
-- **Claude Code** runs with `--tools ""`, so no tool is available and the model can
-  only return text. `--strict-mcp-config` loads no MCP servers.
-- **Codex** runs with `--sandbox read-only --ignore-user-config --ignore-rules
+- **Claude Code** always runs with `--restricted`. That removes every command- or
+  code-running tool, ignores user/project/local settings files (so a repository cannot
+  install hooks), confines file tools to the working directory, and refuses
+  `bypassPermissions`. `--strict-mcp-config` loads no MCP servers.
+  - *Text mode:* `--tools ""`, so the model can only return text.
+  - *Agent mode:* `--tools Read,Edit,Write,Glob,Grep --permission-mode acceptEdits`.
+- **Codex** always runs with its shell and every non-editing tool disabled
+  (`--disable shell_tool unified_exec apps browser_use computer_use in_app_browser hooks
+  plugins multi_agent image_generation`), plus `--ignore-user-config --ignore-rules
   --ephemeral`.
+  - *Text mode:* `--sandbox read-only`.
+  - *Agent mode:* `--sandbox workspace-write` with
+    `sandbox_workspace_write.network_access=false`.
+- **Verified live** (throwaway workspace, prompts asking each agent to edit a file, run
+  `touch`, and read a file outside the workspace): both agents edited the file. Neither
+  could run the command. Claude was blocked from the outside file by `--restricted`,
+  and Codex had no file-reading tool at all. Nothing outside the workspace leaked into
+  either reply.
+- **Agent workspaces** are full snapshot copies with agent-control files removed
+  (`CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `.claude/`, `.codex/`, `.cursor/`,
+  `.mcp.json`, …). The excluded paths are recorded and shown to the reviewer. DevFlow
+  computes the diff in Python (`difflib`) instead of running git in a directory the
+  agent controlled, and rejects symlinks, binary content, and files over 1 MB.
+- **Self-correcting loop.** Every candidate goes through the same patch validation and a
+  dry-run apply, then a **sandboxed** verification run (`kind = ai_verification`). Unsafe
+  candidates never reach the sandbox. Feedback to the next attempt contains test output
+  from untrusted code, so it sits inside the untrusted-content tags like everything else.
+  Verification runs never mark failures as resolved and are excluded from build
+  metrics. A human still approves the final candidate.
 - No bypass flag is ever used; a unit test checks for 7 known bypass flags.
   `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `CODEX_API_KEY` are stripped unless the
   user opts in.
@@ -168,11 +193,14 @@ Every diff goes through the same checks, whatever its source:
 2. **The `/out` bind mount is writable.** A malicious test can fill it until the
    10 MB log cap stops the run. JUnit is capped at 20 MB and parsed safely, but disk
    use between polling intervals is not strictly bounded.
-3. **Codex can read local files.** Its read-only sandbox blocks writes and network for
-   commands, not reads. A prompt-injected Codex could read, for example, `~/.ssh`
-   contents into its *reply*. That reply goes to the reviewer, not to a third party,
-   except that the model provider does see what the CLI sends it. Prefer the Claude
-   Code provider (no tools) for untrusted repositories.
+3. **Agent edit confinement relies on the vendors' sandboxes.** Claude Code's
+   `--restricted` mode and Codex's workspace-write sandbox (seatbelt on macOS) keep edits
+   inside the workspace. DevFlow probed both live and adds its own layer: only the diff
+   between the snapshot and the workspace is ever used, and it is validated, tested in
+   Docker, and human-approved. But if a vendor sandbox had a bug, an agent could in
+   principle write elsewhere on the host. *(Earlier versions ran Codex with its shell
+   enabled, which allowed reading local files. The shell is now disabled in both
+   modes.)*
 4. **AI providers are external services.** The selected source files are sent to
    Anthropic or OpenAI under the user's own account. Redaction is pattern-based and
    will miss secrets in unusual formats.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -21,26 +21,50 @@ TERMINAL = {"passed", "failed", "error", "timeout", "cancelled"}
 
 
 class FakeAIProvider:
-    """Stands in for an external AI CLI. Returns a configurable diagnosis/patch."""
+    """Stands in for an external AI CLI.
+
+    Text mode returns ``self.patch``. In agent mode (``supports_agent_mode = True``) each
+    call pops the next callable from ``self.actions`` and lets it edit the workspace
+    copy, exactly as a real agent would. Every prompt input and feedback is recorded.
+    """
 
     name = "claude-code"
     label = "Fake AI provider (tests)"
     is_ai = True
     generates_patches = True
+    accepts_feedback = True
 
     def __init__(self) -> None:
         self.patch: str | None = None
         self.available = True
+        self.supports_agent_mode = False
+        self.actions: list[Callable[[Path], None]] = []
         self.requests: list[AnalysisInput] = []
+        self.feedbacks: list[str | None] = []
+        self.workspace_listing: list[str] = []
 
     def availability(self) -> Availability:
         return Availability(self.available, None if self.available else "not installed")
 
-    def analyze(self, request: AnalysisInput, workspace: Path) -> AnalysisOutput:
+    def analyze(
+        self,
+        request: AnalysisInput,
+        workspace: Path,
+        *,
+        agent: bool = False,
+        feedback: str | None = None,
+    ) -> AnalysisOutput:
         self.requests.append(request)
+        self.feedbacks.append(feedback)
         self.workspace_listing = sorted(
             p.relative_to(workspace).as_posix() for p in workspace.rglob("*") if p.is_file()
         )
+        if agent:
+            if self.actions:
+                self.actions.pop(0)(workspace)
+            return AnalysisOutput(
+                "fake root cause", "fake explanation", "medium", None, "fake rationale"
+            )
         return AnalysisOutput(
             "fake root cause", "fake explanation", "medium", self.patch, "fake rationale"
         )

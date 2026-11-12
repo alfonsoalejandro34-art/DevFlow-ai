@@ -39,9 +39,25 @@ class Database:
         cfg = Config()
         cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
         cfg.set_main_option("sqlalchemy.url", self.url.replace("%", "%%"))
-        with self.engine.begin() as connection:
-            cfg.attributes["connection"] = connection
-            command.upgrade(cfg, "head")
+        sqlite = self.url.startswith("sqlite")
+        with self.engine.connect() as connection:
+            if sqlite:
+                # SQLite rebuilds tables to alter them; enforcement must be off during the
+                # rebuild (it cannot change inside a transaction) and is verified after.
+                connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+                connection.commit()
+            try:
+                with connection.begin():
+                    cfg.attributes["connection"] = connection
+                    command.upgrade(cfg, "head")
+                    if sqlite:
+                        broken = connection.exec_driver_sql("PRAGMA foreign_key_check").all()
+                        if broken:
+                            raise RuntimeError(f"Migration left broken foreign keys: {broken[:5]}")
+            finally:
+                if sqlite:
+                    connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                    connection.commit()
 
     def dispose(self) -> None:
         self.engine.dispose()
