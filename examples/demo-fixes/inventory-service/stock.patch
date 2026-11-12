@@ -1,0 +1,16 @@
+diff --git a/inventory/stock.py b/inventory/stock.py
+index 8d038b7..befb977 100644
+--- a/inventory/stock.py
++++ b/inventory/stock.py
+@@ -20,7 +20,10 @@ class Inventory:
+     def remove(self, sku: str, quantity: int) -> int:
+         if quantity <= 0:
+             raise ValueError("quantity must be positive")
+-        self._levels[sku] = self._levels.get(sku, 0) - quantity
++        available = self._levels.get(sku, 0)
++        if quantity > available:
++            raise InsufficientStock(f"{sku}: requested {quantity}, only {available} available")
++        self._levels[sku] = available - quantity
+         return self._levels[sku]
+ 
+     def level(self, sku: str) -> int:

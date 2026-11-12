@@ -1,0 +1,22 @@
+diff --git a/inventory/pricing.py b/inventory/pricing.py
+index 15df2ba..e22e1f9 100644
+--- a/inventory/pricing.py
++++ b/inventory/pricing.py
+@@ -9,7 +9,7 @@ def apply_discount(price: float, percent: float) -> float:
+     """Return ``price`` reduced by ``percent`` percent, rounded to cents."""
+     if not 0 <= percent <= 100:
+         raise ValueError("percent must be between 0 and 100")
+-    return round(price * percent / 100, 2)
++    return round(price * (1 - percent / 100), 2)
+ 
+ 
+ def bulk_unit_price(unit_price: float, quantity: int) -> float:
+@@ -17,7 +17,7 @@ def bulk_unit_price(unit_price: float, quantity: int) -> float:
+     if quantity <= 0:
+         raise ValueError("quantity must be positive")
+     for threshold, discount in BULK_TIERS:
+-        if quantity > threshold:
++        if quantity >= threshold:
+             return round(unit_price * (1 - discount), 2)
+     return unit_price
+ 

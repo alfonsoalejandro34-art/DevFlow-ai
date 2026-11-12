@@ -1,0 +1,4 @@
+# Packages available to test workloads inside the sandbox. Containers have no network
+# access, so anything a repository's tests import must be installed here.
+pytest==9.2.0
+pytest-timeout==2.4.0

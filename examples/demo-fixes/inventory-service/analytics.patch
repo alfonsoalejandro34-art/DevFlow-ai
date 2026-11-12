@@ -1,0 +1,13 @@
+diff --git a/inventory/analytics.py b/inventory/analytics.py
+index b8ccdcc..ec6bc14 100644
+--- a/inventory/analytics.py
++++ b/inventory/analytics.py
+@@ -7,6 +7,8 @@ from collections import Counter
+ 
+ def average_order_value(order_totals: list[float]) -> float:
+     """Mean order value; 0.0 when there are no orders."""
++    if not order_totals:
++        return 0.0
+     return round(sum(order_totals) / len(order_totals), 2)
+ 
+ 
