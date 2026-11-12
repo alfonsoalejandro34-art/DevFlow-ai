@@ -51,6 +51,7 @@ scripts/screenshots.py` (requires `pip install playwright` and
 |---|---|
 | Dashboard says "Missing or invalid API token" | Run `make token` and paste the value. Tokens live in `.devflow/api_token` |
 | Health banner: "Docker engine unavailable" | Start Docker Desktop; `docker version` must show a Server section |
+| `make: docker: No such file or directory` | Docker Desktop's per-user install puts the CLI in `~/.docker/bin`. The Makefile and DevFlow find it there automatically; for your own shell, add `export PATH="$HOME/.docker/bin:$PATH"` to `~/.zprofile` |
 | "Runner image 'devflow-runner:0.1' not built" | `make runner-image` |
 | Runs fail with `missing_dependency` | The sandbox has no network. Add the package to `runner/requirements.txt` and rebuild the image |
 | `403 Repository path is outside the approved directories` | Add the parent directory under Settings → Repository directories |

@@ -31,7 +31,7 @@ file and line locations, state transitions, and that user repositories stay unch
 | `test_api.py` | 30 | Auth (5 bad-token variants), Host header, correlation IDs, error format, malicious paths (7), approved roots, unsupported repos, settings bounds (7), OpenAPI, loopback enforcement |
 | `test_security.py` | 51 | Path validation and traversal, symlink escapes, hostile git config/filters/hooks, revision injection (6), patch validation (9 malicious shapes), risk scoring, model-diff normalization, redaction, command allowlist, env scrubbing, token file |
 | `test_components.py` | 34 | JUnit parsing (including entity-expansion attack), classification (7), signatures, structure detection, Docker command flags and 10 weakening mutations, Docker failure (exit 125), runner unavailable (503), CLI invocation flags, prompt construction/injection, response parsing, DB constraints, concurrent duplicate submissions |
-| `test_docker_sandbox.py` | 5 | Live: UID, no network, read-only `/src` and rootfs, zero capabilities, NoNewPrivs, noexec `/tmp`, examples in Docker, memory limit, cancellation + container cleanup, wall-clock timeout |
+| `test_docker_sandbox.py` | 5 | Live, from inside the container: UID, no network, read-only `/src` and rootfs, only `/src` and `/out` mounted from the host (read from `/proc/self/mounts`), no Docker socket, `/root` unreadable, zero capabilities, NoNewPrivs, noexec `/tmp`. Also: examples in Docker, memory limit, cancellation + container cleanup, wall-clock timeout |
 | `frontend/src/__tests__` | 9 | Status badges are labeled, diff rendering, formatting, sign-in errors and bearer header, approval requires an explicit click and posts the decision, invalid patches cannot be approved, export disabled until acknowledged, build history filters |
 
 ## Required scenarios
@@ -54,7 +54,8 @@ file and line locations, state transitions, and that user repositories stay unch
 
 ## Results on the development machine
 
-- Backend: **134 passed**, 5 Docker tests skipped (no Docker engine), 85% line coverage.
+- Backend: **139 passed, 0 skipped**, including the 5 live Docker sandbox tests
+  (Docker Desktop 29.9.3), with 85% line coverage.
 - Frontend: **9 passed**.
 - `ruff check`, `ruff format --check`, `mypy --strict` (50 files), `tsc`: clean.
 
@@ -76,3 +77,9 @@ Live testing caught issues the unit tests had not, and each now has a regression
 7. A patch's retest verdict was only recorded when someone opened the patch, so the
    analytics showed stale "retesting" rows. The verdict is now written in the same
    transaction that finishes the retest run, and migration `0002` repairs existing rows.
+8. The application image crashed at start: the `/data` volume was created owned by
+   root, and the image runs as a non-root user. The image now creates `/data` owned by
+   that user. Found by building and running the image.
+9. A sandbox probe used `Path.exists()` on `/root/.ssh`, which raises
+   `PermissionError` for the unprivileged user on Python 3.12. The sandbox was correct
+   and the probe was wrong. It now asserts the exact mount table instead.

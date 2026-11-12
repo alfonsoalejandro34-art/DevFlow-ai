@@ -4,10 +4,9 @@ DevFlow AI runs code it did not write (test suites) and consults tools whose out
 cannot trust (AI agents). This document lists what is treated as untrusted, the controls
 in place, how they are tested, and the risks that remain.
 
-> DevFlow is a local developer tool. Its controls have been unit- and integration-tested,
-> but it has **not** had an external security review, and the Docker sandbox had not yet
-> been exercised live on the development Mac at the time of writing (CI runs those
-> tests). Do not describe it as production-safe.
+> DevFlow is a local developer tool. Its controls have been unit-, integration-, and
+> live-container-tested on the development Mac (Docker Desktop 29.9), but it has
+> **not** had an external security review. Do not describe it as production-safe.
 
 ## Trust boundaries
 
@@ -159,6 +158,7 @@ Every diff goes through the same checks, whatever its source:
 | npm audit | 0 vulnerabilities |
 | Workflow schema (`check-jsonschema`) | Valid |
 | Security regression tests | Passing (path traversal, symlink escape, hostile git config, revision injection, malicious patches, redaction, command allowlist, env scrubbing, auth, Host header, settings bounds, sandbox flag validation) |
+| Live sandbox properties (`make test-docker`) | 5/5 passing on Docker Desktop 29.9.3. Mount table observed from inside: rootfs `overlay ro`, `/src` `ro`, `/out` `rw`, nothing else from the host |
 
 ## Residual risks
 

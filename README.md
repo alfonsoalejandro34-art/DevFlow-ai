@@ -8,13 +8,10 @@ before anything can touch the repository.
 
 ![Overview dashboard](docs/screenshots/overview.png)
 
-> **Status (honest summary).** The full workflow is implemented and verified end to end
-> on macOS (Apple Silicon) with the opt-in local runner, including real Claude Code and
-> Codex analyses. The Docker sandbox runner is fully implemented and its command
-> construction and failure handling are unit-tested, but **live container runs had not
-> yet been executed on the development machine when this was written** (Docker Desktop
-> was not installed); the live sandbox tests in `backend/tests/test_docker_sandbox.py`
-> run in CI. See [Verification status](#verification-status).
+> **Status.** The full workflow is implemented and verified end to end on macOS (Apple
+> Silicon, Docker Desktop 29.9) with the Docker sandbox runner, including live
+> security-property tests inside the container and real Claude Code and Codex analyses.
+> See [Verification status](#verification-status) for exactly what was and wasn't run.
 
 ---
 
@@ -96,8 +93,9 @@ Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Screenshots
 
-All screenshots are of the running application with real recorded data (runs used the
-local runner; see status note above).
+All screenshots are of the running application with real recorded data. Earlier runs
+in the history used the local runner, before Docker was installed. Recent ones ran in
+the Docker sandbox.
 
 | | |
 |---|---|
@@ -172,22 +170,23 @@ PASS / FAIL / BLOCKED. It uses `examples/repos/inventory-service`, a small libra
 four intentional bugs (5 failing tests out of 14). A run on the development machine:
 
 ```
-[PASS] Server healthy - runner=local sandboxed=False
+[PASS] Server healthy - runner=docker sandboxed=True
 [PASS] 1. Register sample repository
-[PASS] 2. Run tests with the UNSANDBOXED local runner - 9 passed, 5 failed in 275 ms
+[PASS] 2. Run tests in Docker - 9 passed, 5 failed in 583 ms
 [PASS] 3. Detect failures - assertion, exception
 [PASS] 4. Capture stack traces
 [PASS] 5a. Rule-based diagnosis (no AI)
-[PASS] 5b. AI diagnosis (claude-code) - Four independent bugs in the code under test ... (23873 ms, 1 patch)
+[BLOCKED] 5b. AI diagnosis - not requested (pass --ai claude-code or --ai codex)
 [PASS] 6. Patch proposal (SCRIPTED DEMO, not AI)
 [PASS] 7. Human review and approval
 [PASS] 8. Apply to isolated snapshot and retest - 14/14 passed
 [PASS] 9. Compare baseline and final results - 5 fixed, 0 regressed
 [PASS] 10. Metrics recorded
-12 passed, 0 failed, 0 blocked
+11 passed, 0 failed, 1 blocked
 ```
 
-The Claude Code patch from that run was then approved through the API and its sandboxed
+With `--ai claude-code` (run earlier, before Docker was installed, on the local runner),
+step 5b passed: Claude Code identified all four bugs in 23.9 s and proposed a patch. That patch was then approved through the API and its sandboxed
 retest passed 14/14. A Codex analysis of the same run identified the same four root
 causes in 18.3 s; its first patch was **rejected by DevFlow's validation** because the
 diff was malformed (a file header emitted as a context line). That real-world case led
@@ -255,19 +254,21 @@ production-safe.
 
 `benchmarks/run_benchmarks.py` compares a manual baseline (clone + run pytest directly)
 with the DevFlow workflow on identical scenarios, 10 measured iterations after 1 warmup.
-Median results on an Apple Silicon MacBook Air, **local runner**:
+Median results on an Apple Silicon MacBook Air with the **Docker sandbox runner**:
 
-| Scenario | Baseline | DevFlow | Difference |
+| Scenario | Baseline (pytest by hand) | DevFlow (Docker) | Difference |
 |---|---|---|---|
-| Test feedback, passing repo (3 tests) | 209 ms | 402 ms | DevFlow **+193 ms** slower |
-| Test feedback, failing repo (14 tests) | 217 ms | 406 ms | DevFlow **+189 ms** slower |
-| Fix validation (apply patch + rerun) | 218 ms | 457 ms | DevFlow **+238 ms** slower |
+| Test feedback, passing repo (3 tests) | 186 ms | 774 ms | DevFlow **+588 ms** slower |
+| Test feedback, failing repo (14 tests) | 210 ms | 778 ms | DevFlow **+568 ms** slower |
+| Fix validation (apply patch + rerun) | 211 ms | 853 ms | DevFlow **+642 ms** slower |
+| Bare sandboxed container start | | 124 ms | |
 
-DevFlow is slower in raw wall-clock time for these tiny suites: it snapshots the commit,
-records every result, and classifies failures. What it adds is in what you get back
-(structured failures, history, comparison, isolation, review trail), not speed. Docker
-runs will add container start-up cost on top; those numbers will be recorded with
-`make benchmark` once measured. Methodology: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+DevFlow is **slower** in raw wall-clock time for these tiny suites. Of the ~778 ms,
+pytest itself takes 28 ms, the container path about 490 ms (start, Python and pytest
+start-up over Docker Desktop's file sharing, teardown), and DevFlow's pipeline about
+260 ms. What it adds is isolation and what you get back (structured failures, history,
+comparison, review trail), not speed. The local runner adds about 190 ms instead.
+Methodology and both batches: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Verification status
 
@@ -275,13 +276,16 @@ runs will add container start-up cost on top; those numbers will be recorded wit
 |---|---|
 | Backend starts; DB migrates and persists | Verified |
 | Dashboard builds and serves real data | Verified (screenshots above) |
-| Example repo registration; passing/failing detection; history; cancel; timeouts | Verified (local runner + 134 automated backend tests) |
+| Example repo registration; passing/failing detection; history; cancel; timeouts | Verified, in Docker and with the local runner (139 automated backend tests) |
 | Rule-based fallback; scripted demo; approval; retest; compare; export | Verified |
 | Claude Code analysis; Codex analysis | Verified with real CLI calls |
 | Security checks (Bandit, pip-audit, npm audit, workflow schema) | Executed, clean |
+| Docker sandbox: non-root, no network, read-only `/src` and rootfs, only the expected mounts, no socket, zero capabilities, noexec `/tmp`, memory limit, cancel + cleanup, wall-clock timeout | Verified live (`make test-docker`, 5/5) |
+| End-to-end demo through the Docker runner | Verified (11 passed, 1 blocked because AI was not requested) |
+| App image (`Dockerfile`) | Built and run: serves the dashboard, enforces auth, migrates, installs examples |
+| `compose.yaml` with the Docker-socket mount | **Not run**: it grants the container root-equivalent Docker access (documented trade-off) |
 | GitHub Actions workflow | Schema-validated; **not yet run on GitHub** (nothing has been pushed) |
-| Docker sandbox runner live execution | **Not yet verified locally** (Docker not installed at time of writing) |
-| `Dockerfile` / `compose.yaml` for the app image | Written; **not built** (no Docker) |
+| Claude Code and Codex through the Docker runner | AI calls were verified earlier on local-runner runs. The analysis path doesn't depend on the runner, and it was not re-run |
 
 ## Documentation
 

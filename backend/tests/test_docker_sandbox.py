@@ -51,10 +51,21 @@ def test_root_filesystem_is_read_only():
     with pytest.raises(OSError):
         pathlib.Path("/usr/local/lib/evil").write_text("x")
 
-def test_no_host_home_or_docker_socket():
-    assert not pathlib.Path("/var/run/docker.sock").exists()
-    assert not any(pathlib.Path("/").glob("Users"))
-    assert not pathlib.Path("/root/.ssh").exists()
+PSEUDO_FS = {"proc", "sysfs", "tmpfs", "devpts", "mqueue", "cgroup", "cgroup2", "overlay"}
+DOCKER_MANAGED = {"/etc/hosts", "/etc/hostname", "/etc/resolv.conf"}
+
+def test_only_expected_host_mounts():
+    mounts = [line.split() for line in pathlib.Path("/proc/self/mounts").read_text().splitlines()]
+    host = {m[1]: m[3].split(",") for m in mounts if m[2] not in PSEUDO_FS and m[1] not in DOCKER_MANAGED}
+    assert set(host) == {"/src", "/out"}, host
+    assert "ro" in host["/src"]
+    root = next(m for m in mounts if m[1] == "/")
+    assert "ro" in root[3].split(",")
+
+def test_no_docker_socket_or_root_home():
+    assert not os.path.exists("/var/run/docker.sock")
+    assert not os.path.exists("/run/docker.sock")
+    assert not os.access("/root", os.R_OK)  # root's home is unreadable to the sandbox user
 
 def test_capabilities_dropped():
     status = pathlib.Path("/proc/self/status").read_text()

@@ -7,6 +7,7 @@ live in the database instead; see ``devflow.services.settings``.
 from __future__ import annotations
 
 import ipaddress
+import shutil
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -41,7 +42,7 @@ class Settings(BaseSettings):
     # only be enabled from the environment, never through the API.
     allow_unsandboxed_runner: bool = False
     runner_image: str = "devflow-runner:0.1"
-    docker_binary: str = "docker"
+    docker_binary: str = Field(default_factory=lambda: _default_docker())
     max_concurrent_jobs: int = Field(default=2, ge=1, le=8)
 
     claude_binary: str = "claude"
@@ -96,6 +97,14 @@ class Settings(BaseSettings):
     @property
     def ai_workspaces_dir(self) -> Path:
         return self.resolved_data_dir / "ai-workspaces"
+
+
+def _default_docker() -> str:
+    """`docker` on PATH, else Docker Desktop's per-user install location."""
+    if shutil.which("docker"):
+        return "docker"
+    user_install = Path.home() / ".docker" / "bin" / "docker"
+    return str(user_install) if user_install.is_file() else "docker"
 
 
 def is_loopback(host: str) -> bool:

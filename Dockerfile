@@ -15,7 +15,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     DEVFLOW_DATA_DIR=/data DEVFLOW_FRONTEND_DIST=/app/frontend/dist DEVFLOW_EXAMPLES_DIR=/app/examples
 RUN apt-get update && apt-get install -y --no-install-recommends git docker.io \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --uid 10002 --create-home devflow
+    && useradd --uid 10002 --create-home devflow \
+    && mkdir -p /data && chown devflow:devflow /data
 WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
 COPY backend/ backend/

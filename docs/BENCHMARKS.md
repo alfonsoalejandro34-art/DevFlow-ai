@@ -36,10 +36,40 @@ Results go to the database (shown on Analytics → Benchmarks) and to
 - **Container start-up** (Docker runner only): `docker run --rm` of the sandbox image
   executing `python -c pass` with DevFlow's exact security flags.
 
-## Results
+## Results: Docker sandbox runner
 
-Batch `20261112T214741-f14760`, Apple Silicon MacBook Air (16 GB), macOS 27.2,
-Python 3.14.7, **local runner** (Docker was not installed when this batch ran).
+Batch `20261112T223434-f46e5b`, Apple Silicon MacBook Air (16 GB), macOS 27.2,
+Docker Desktop 29.9.3, Python 3.14.7 (host) / 3.12 (runner image).
+
+| Scenario | Mode | Median | p90 | Min | Max | Std dev |
+|---|---|---|---|---|---|---|
+| Test feedback, calculator-passing | baseline | 185.6 ms | 190.8 | 184.2 | 190.8 | 1.9 |
+| | DevFlow (Docker) | 774.0 ms | 785.6 | 716.8 | 785.6 | 23.5 |
+| Test feedback, inventory-service | baseline | 210.1 ms | 215.2 | 207.2 | 215.2 | 2.3 |
+| | DevFlow (Docker) | 778.1 ms | 787.0 | 768.6 | 787.0 | 5.4 |
+| Fix validation, inventory-service | baseline | 211.1 ms | 214.9 | 208.3 | 214.9 | 1.8 |
+| | DevFlow (Docker) | 852.6 ms | 897.5 | 839.4 | 897.5 | 17.4 |
+| Container start-up (`python -c pass`) | Docker | 123.9 ms | 150.4 | 108.6 | 150.4 | 11.7 |
+
+**Where the time goes** (medians, inventory-service, from each run's recorded timings):
+
+| Component | Time |
+|---|---|
+| pytest executing the 14 tests | 28 ms |
+| Container path: create/start (~124 ms), Python and pytest start-up over Docker Desktop's file sharing (a bare `python -c "import pytest"` container takes ~380 ms), kill/remove | ~490 ms |
+| DevFlow pipeline: API, job scheduling, blob snapshot, JUnit parsing, DB writes, 50 ms polling | ~260 ms |
+| **End to end** | **778 ms** |
+
+The sandbox costs about half a second per run on macOS. Most of that is Docker
+Desktop's VM and file-sharing layer, not DevFlow. On Linux, where containers run
+natively, it is expected to be lower, but that was not measured. Possible reductions:
+reusing a warm container per repository (which weakens per-run isolation) or copying
+the snapshot into the container instead of bind-mounting it.
+
+## Results: local runner (no isolation)
+
+Batch `20261112T214741-f14760`, same machine, **local runner**, measured before Docker
+was installed.
 
 | Scenario | Mode | Median | p90 | Min | Max | Std dev |
 |---|---|---|---|---|---|---|
@@ -50,8 +80,9 @@ Python 3.14.7, **local runner** (Docker was not installed when this batch ran).
 | Fix validation, inventory-service | baseline | 218.3 ms | 219.9 | 217.4 | 219.9 | 0.9 |
 | | DevFlow (local) | 456.7 ms | 461.6 | 429.9 | 461.6 | 10.4 |
 
-**Interpretation.** For these very small suites, DevFlow is **about 190–240 ms slower**
-in wall time than running pytest by hand. The extra time goes to job scheduling, the
+**Interpretation.** For these very small suites, DevFlow is slower than running pytest
+by hand: **about 570–640 ms with the Docker sandbox** and **about 190–240 ms with the
+local runner**. The extra time goes to job scheduling, the
 blob-level snapshot, writing results and failure records, the API round trips, and
 polling. DevFlow is not faster at running tests, and these numbers do not claim it is.
 
@@ -61,10 +92,6 @@ failure seen before, setting up a clean environment to try a fix, and keeping a 
 Those are visible in the product's own metrics (time to failure signal, time to
 validate fix, repeated and resolved failures) but were not measured against a human
 baseline here. Any such claim would need a user study.
-
-**Pending:** Docker-runner results and the container start-up scenario. Run
-`make benchmark` with the Docker runner and add the batch here. Expect container
-start-up to add several hundred milliseconds per run on macOS.
 
 ## AI diagnosis timings (single observations, not a benchmark)
 

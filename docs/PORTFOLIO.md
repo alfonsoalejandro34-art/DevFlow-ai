@@ -16,9 +16,10 @@ OpenTelemetry traces, and GitHub Actions CI.
   SQLAlchemy/Alembic, React/TypeScript). It automates the test-failure feedback loop:
   isolated test execution, failure classification, AI-assisted diagnosis, and a
   human-approved fix workflow.
-- Designed a **sandboxed test runner** (no network, read-only root filesystem, dropped
-  capabilities, non-root, CPU/memory/PID limits). A validator refuses any container
-  command that weakens isolation, and 10 mutation tests prove each weakening is caught.
+- Designed a **Docker sandbox test runner** (no network, read-only root filesystem,
+  dropped capabilities, non-root, CPU/memory/PID limits). A validator refuses any
+  container command that weakens isolation (10 mutation tests), and live tests verify
+  each property from inside the container.
 - Integrated **Claude Code and Codex CLIs** behind a provider interface with a non-AI
   fallback. Agents get no tools or a read-only sandbox, redacted minimal context, and
   prompt-injection screening. API keys are stripped so analyses never incur metered
@@ -30,12 +31,14 @@ OpenTelemetry traces, and GitHub Actions CI.
 - Hardened Git access against **hostile repositories**: no hooks, filters, or
   fsmonitor, and snapshots built from raw blobs. Tests plant malicious hooks and filter
   drivers and assert they never execute.
-- Wrote **134 backend tests (85% coverage) and 9 frontend tests** covering 13 failure
-  and security scenarios end to end (timeouts, cancellation, duplicate jobs, crash
-  recovery, path traversal, revision injection). Testing found and fixed 7 real bugs.
+- Wrote **139 backend tests (85% coverage, including live Docker sandbox tests) and 9
+  frontend tests** covering 13 failure and security scenarios end to end (timeouts,
+  cancellation, duplicate jobs, crash recovery, path traversal, revision injection).
+  Testing found and fixed 9 real bugs.
 - Added **observability** (structured JSON logs with correlation IDs, Prometheus
   metrics, OpenTelemetry traces) and a **benchmark suite** with a documented method. It
-  reported honestly that the platform adds ~190 ms over raw pytest on small suites.
+  reported honestly that sandboxed runs add ~570 ms over raw pytest on small suites,
+  and broke the cost down (container path ~490 ms, of which pytest is 28 ms).
 - Set up **least-privilege GitHub Actions** (read-only token, no secrets, fork-safe
   trigger) running lint, strict mypy, tests, a Docker sandbox job, Bandit, pip-audit,
   and npm audit.
@@ -77,8 +80,8 @@ OpenTelemetry traces, and GitHub Actions CI.
 |---|---|
 | Environment inspection, isolated venv, dedicated Git repo | Done |
 | Repository registration, validation, structure detection, commits, revisions | Done, verified |
-| Test execution, results, logs, timeouts, cancellation, duplicates, history, compare | Done, verified (local runner) |
-| Docker sandbox runner | Implemented and unit-tested; **live run pending Docker install** |
+| Test execution, results, logs, timeouts, cancellation, duplicates, history, compare | Done, verified (Docker and local runner) |
+| Docker sandbox runner | Done, verified live (5/5 sandbox tests, end-to-end demo) |
 | Failure classification and repeated/resolved tracking | Done, verified |
 | AI providers (Claude Code, Codex), heuristic fallback, scripted demo | Done, verified live |
 | Patch validation, risk, approval, retest, export | Done, verified |
@@ -86,9 +89,10 @@ OpenTelemetry traces, and GitHub Actions CI.
 | Dashboard (overview, repos, builds, run analysis, reviews, analytics, settings) | Done, verified with screenshots |
 | CLI | Done, verified |
 | Metrics, logs, traces, health warnings | Done, verified |
-| Benchmarks | Done for local runner; **Docker batch pending** |
+| Benchmarks | Done (Docker and local runner batches) |
 | GitHub Actions | Written and schema-validated; **not yet run on GitHub** (no push) |
 | Security checks (Bandit, pip-audit, npm audit) | Executed, clean |
 | Clean-clone setup | Verified (`make setup && make test`, server boot + demo) |
-| App `Dockerfile` / `compose.yaml` | Written; **not built** (no Docker) |
+| App `Dockerfile` | Built and run, verified |
+| `compose.yaml` (Docker-socket mount) | Written; **not run** (root-equivalent; documented trade-off) |
 | Optional: Go service, gRPC, Kubernetes, SSH runners | Not implemented (core first, as specified) |
