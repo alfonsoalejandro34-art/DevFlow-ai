@@ -32,7 +32,17 @@ export function AnalyticsPage() {
   const perRun = (t?.runs ?? [])
     .filter((r) => r.test_duration_ms !== null && r.overhead_ms !== null)
     .map((r) => ({ id: r.id, test: (r.test_duration_ms ?? 0) / 1000, overhead: (r.overhead_ms ?? 0) / 1000 }));
-  const failureTrend = daily.map((d) => ({ date: d.date, failures: Object.values(d.failures_by_category).reduce((a, b) => a + b, 0) }));
+  // Per-run series stay informative even when all activity falls on a single day.
+  const finished = (t?.runs ?? []).filter((r) => r.status === "passed" || r.status === "failed" || r.status === "error" || r.status === "timeout");
+  const perRunSeries = finished.map((r, i) => {
+    const window = finished.slice(Math.max(0, i - 9), i + 1);
+    return {
+      id: r.id,
+      duration: r.duration_ms,
+      failing: r.failed,
+      rolling_pass_rate: Math.round((100 * window.filter((w) => w.status === "passed").length) / window.length),
+    };
+  });
 
   return (
     <div className="stack">
@@ -67,17 +77,17 @@ export function AnalyticsPage() {
                   { key: "failed", label: "Failed / error / timeout", color: "var(--critical)" },
                 ]} />
               </Card>
-              <Card title="Test pass rate" subtitle="Share of runs that passed, per day">
-                <TrendLine data={daily as never} format={(v) => `${v}%`} domain={[0, 100]}
-                  series={[{ key: "pass_rate", label: "Pass rate", color: "var(--series-1)" }]} />
+              <Card title="Test pass rate" subtitle="Rolling share of passing runs over the previous 10 runs">
+                <TrendLine data={perRunSeries as never} xKey="id" format={(v) => `${v}%`} domain={[0, 100]}
+                  series={[{ key: "rolling_pass_rate", label: "Pass rate", color: "var(--series-1)" }]} />
               </Card>
-              <Card title="Average build duration" subtitle="Passed and failed runs, submission to result">
-                <TrendLine data={daily as never} format={(v) => formatMs(v)}
-                  series={[{ key: "avg_duration_ms", label: "Avg duration", color: "var(--series-1)" }]} />
+              <Card title="Build duration" subtitle="Submission to result, per run">
+                <TrendLine data={perRunSeries as never} xKey="id" format={(v) => formatMs(v)}
+                  series={[{ key: "duration", label: "Duration", color: "var(--series-1)" }]} />
               </Card>
-              <Card title="Failure trend" subtitle="Failure records created per day">
-                <TrendLine data={failureTrend as never} format={(v) => String(v)}
-                  series={[{ key: "failures", label: "Failures", color: "var(--series-2)" }]} />
+              <Card title="Failure trend" subtitle="Failing tests per run">
+                <TrendLine data={perRunSeries as never} xKey="id" format={(v) => String(v)}
+                  series={[{ key: "failing", label: "Failing tests", color: "var(--series-2)" }]} />
               </Card>
             </div>
           )}
@@ -116,7 +126,7 @@ export function AnalyticsPage() {
                   ))}
                 </tbody>
               </table>
-            ) : <p className="muted small" style={{ margin: 0 }}>Accessible tabular view of the charts above.</p>}
+            ) : <p className="muted small" style={{ margin: 0, padding: "4px 16px 16px" }}>Accessible tabular view of the daily figures.</p>}
           </Card>
 
           <Card title="Benchmarks" subtitle="Recorded by benchmarks/run_benchmarks.py: baseline (direct pytest) vs DevFlow workflow" bodyClass="table-wrap">

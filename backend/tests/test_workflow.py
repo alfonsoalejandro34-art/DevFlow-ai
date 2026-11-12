@@ -47,6 +47,8 @@ def test_syntax_error_repository(client: TestClient, examples: dict[str, int]) -
     failures = client.get(f"/api/runs/{run['id']}/failures").json()
     assert failures and failures[0]["category"] == "syntax_error"
     assert failures[0]["exception_type"] == "SyntaxError"
+    assert "SyntaxError" in failures[0]["summary"]  # not pytest's generic "collection failure"
+    assert failures[0]["nodeid"] == "tests/test_parser.py"
 
 
 def test_missing_dependency_repository(client: TestClient, examples: dict[str, int]) -> None:
@@ -180,6 +182,8 @@ def test_demo_patch_approve_retest_and_export(client: TestClient, examples: dict
     assert reviewed["status"] == "retesting"
     retest = wait_run(client, reviewed["retest_run_id"])
     assert retest["status"] == "passed" and retest["kind"] == "patch_retest"
+    # The verdict is recorded when the retest finishes, before anyone reads the patch.
+    assert client.get("/api/metrics/overview").json()["ai"]["retest_passed"] == 1
     assert retest["parent_run_id"] == run["id"]
     patch = client.get(f"/api/patches/{patch['id']}").json()
     assert patch["status"] == "retest_passed"
@@ -370,3 +374,44 @@ def test_pytest_config_is_never_inherited_from_parent_directories(
         assert run["status"] == expected, run
     failure = client.get(f"/api/runs/{run['id']}/failures").json()[0]
     assert failure["nodeid"] == "tests/test_geo.py", failure["nodeid"]
+
+
+def test_analytics_reflect_recorded_activity(
+    client: TestClient, examples: dict[str, int], settings
+) -> None:  # type: ignore[no-untyped-def]
+    from devflow.database.models import BenchmarkResult
+    from devflow.database.session import Database
+
+    wait_run(client, start_run(client, examples["calculator-passing"])["id"])
+    failing = wait_run(client, start_run(client, examples["inventory-service"])["id"])
+    series = client.get("/api/metrics/timeseries", params={"days": 7}).json()
+    assert len(series["daily"]) == 1
+    day = series["daily"][0]
+    assert (day["runs"], day["passed"], day["failed"], day["pass_rate"]) == (2, 1, 1, 50.0)
+    assert day["failures_by_category"] == {"assertion": 4, "exception": 1}
+    assert [r["id"] for r in series["runs"]][-1] == failing["id"]
+    overview = client.get("/api/metrics/overview").json()
+    assert overview["runs"]["pass_rate"] == 50.0
+    assert overview["productivity"]["failure_categories"] == {"assertion": 4, "exception": 1}
+    assert overview["productivity"]["avg_time_to_failure_ms"] == failing["duration_ms"]
+
+    db = Database(settings.sqlalchemy_url)
+    with db.transaction() as session:
+        for i, ms in enumerate((100.0, 300.0, 200.0)):
+            session.add(
+                BenchmarkResult(
+                    batch_id="b1",
+                    scenario="s",
+                    mode="baseline",
+                    iteration=i,
+                    duration_ms=ms,
+                    success=True,
+                )
+            )
+    db.dispose()
+    bench = client.get("/api/benchmarks").json()
+    assert (
+        bench[0]["median_ms"] == 200.0
+        and bench[0]["iterations"] == 3
+        and bench[0]["min_ms"] == 100.0
+    )

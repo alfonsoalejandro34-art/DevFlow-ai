@@ -1,0 +1,35 @@
+# Containerized deployment of the DevFlow API + dashboard.
+#
+# SECURITY TRADE-OFF: the API container launches sandbox containers, so it needs the
+# Docker socket, which is root-equivalent on the Docker host. Sandbox containers
+# themselves never receive the socket. For local development, prefer running the
+# backend natively (`make serve`), which needs no socket mount. See docs/SECURITY.md.
+services:
+  devflow:
+    build: .
+    image: devflow-ai:0.1
+    environment:
+      DEVFLOW_HOST: 0.0.0.0          # inside the container only; published on loopback below
+      DEVFLOW_ALLOW_REMOTE_BIND: "true"
+      DEVFLOW_DATA_DIR: /data
+    ports:
+      - "127.0.0.1:8000:8000"        # never expose on all host interfaces
+    volumes:
+      - devflow-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-0}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  # Build-only service so `docker compose build runner` produces the sandbox image.
+  runner:
+    build: runner/
+    image: devflow-runner:0.1
+    profiles: ["build"]
+
+volumes:
+  devflow-data:

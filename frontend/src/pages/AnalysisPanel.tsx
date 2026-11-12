@@ -46,7 +46,8 @@ export function AnalysisPanel({ run }: { run: Run }) {
           <div className="stack" style={{ gap: 10 }}>
             <ErrorBanner error={error ?? providers.error} />
             <div className="row">
-              <select className="select" value={chosen} onChange={(e) => setProvider(e.target.value)} aria-label="Analysis provider">
+              <select className="select" value={providers.data ? chosen : ""} onChange={(e) => setProvider(e.target.value)} aria-label="Analysis provider" disabled={!providers.data}>
+                {!providers.data && <option value="">Checking providers…</option>}
                 {providers.data?.map((p) => (
                   <option key={p.name} value={p.name} disabled={!p.available}>
                     {p.label}{p.available ? "" : " (unavailable)"}

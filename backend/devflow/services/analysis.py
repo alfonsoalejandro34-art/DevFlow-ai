@@ -282,7 +282,6 @@ class AnalysisService:
     # ---- patch review ---------------------------------------------------------------
 
     def get_patch(self, patch_id: int) -> PatchProposal:
-        self._sync_patch(patch_id)
         with self.db.session() as session:
             patch = session.get(PatchProposal, patch_id)
             if patch is None:
@@ -361,26 +360,6 @@ class AnalysisService:
         base_run = self.runs.get(patch.run_id)
         self._start_retest(patch_id, base_run.repository, base_run, patch.diff)
         return self.get_patch(patch_id)
-
-    def _sync_patch(self, patch_id: int) -> None:
-        """Advance RETESTING patches once their retest run has finished."""
-        with self.db.transaction() as session:
-            patch = session.get(PatchProposal, patch_id)
-            if (
-                patch is None
-                or patch.status != PatchStatus.RETESTING.value
-                or patch.retest_run_id is None
-            ):
-                return
-            run = session.get(TestRun, patch.retest_run_id)
-            if run is None or not RunStatus(run.status).is_terminal:
-                return
-            if run.status == RunStatus.PASSED.value:
-                patch.status = PatchStatus.RETEST_PASSED.value
-            elif run.status in (RunStatus.ERROR.value, RunStatus.CANCELLED.value):
-                patch.status = PatchStatus.APPROVED.value  # retest did not produce a verdict
-            else:
-                patch.status = PatchStatus.RETEST_FAILED.value
 
     def export_patch(
         self, patch_id: int, confirm: bool, branch: str | None = None

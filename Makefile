@@ -1,4 +1,6 @@
-PY ?= $(shell ls ~/.local/share/uv/python/cpython-3.1[2-9]*/bin/python3.1[2-9] 2>/dev/null | tail -1 || command -v python3.12)
+# First Python >= 3.12 found: uv-managed interpreters, then python3.14..3.12 on PATH.
+PY ?= $(firstword $(wildcard $(HOME)/.local/share/uv/python/cpython-3.1[2-9]*/bin/python3.1[2-9]) \
+        $(shell command -v python3.14 python3.13 python3.12 2>/dev/null))
 VENV := .venv
 BIN := $(VENV)/bin
 DEVFLOW := $(BIN)/devflow

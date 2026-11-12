@@ -169,6 +169,8 @@ code,
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   min-height: 100%;
+  /* Paint the sidebar column full height, even when the page is taller than the viewport. */
+  background: linear-gradient(to right, var(--surface) 219px, var(--border) 219px, var(--border) 220px, var(--page) 220px);
 }
 
 .sidebar {
@@ -759,6 +761,7 @@ details.failure .failure-body {
 @media (max-width: 860px) {
   .shell {
     grid-template-columns: 1fr;
+    background: var(--page);
   }
   .sidebar {
     position: static;

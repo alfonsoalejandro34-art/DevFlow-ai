@@ -11,6 +11,7 @@ from devflow.database.models import FailureCategory
 _MISSING_MODULE = re.compile(r"No module named '([^']+)'")
 _EXCEPTION_LINE = re.compile(r"^E?\s*([A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt))\b", re.M)
 _LOCATION = re.compile(r"^(?P<file>[^\s:][^:\n]*\.py):(?P<line>\d+):", re.M)
+_GENERIC_MESSAGES = {"collection failure", "failed on setup with", "failed on teardown with"}
 _VOLATILE = re.compile(r"0x[0-9a-f]+|\b\d+(?:\.\d+)?\b")
 
 
@@ -103,7 +104,7 @@ def _summary(
             if match
             else "Missing dependency"
         )
-    if message:
+    if message and message.strip() not in _GENERIC_MESSAGES:
         return message.strip().splitlines()[0][:500]
     for line in reversed(text.strip().splitlines()):
         if line.startswith("E ") or (exception_type and exception_type in line):

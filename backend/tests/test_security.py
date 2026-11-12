@@ -272,3 +272,17 @@ def test_command_environment_is_scrubbed(monkeypatch: pytest.MonkeyPatch, tmp_pa
         "python", ["-c", "import os; print(sorted(os.environ))"], configured=os.sys.executable
     )  # type: ignore[attr-defined]
     assert b"AWS_SECRET_ACCESS_KEY" not in out.stdout and b"GITHUB_TOKEN" not in out.stdout
+
+
+def test_api_token_file_is_private_and_stable(tmp_path: Path) -> None:
+    from devflow.security.auth import load_or_create_token, token_matches
+
+    token = load_or_create_token(tmp_path)
+    path = tmp_path / "api_token"
+    assert len(token) >= 40
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert load_or_create_token(tmp_path) == token  # reused, not regenerated
+    assert token_matches(token, f"Bearer {token}")
+    assert not token_matches(token, f"Bearer {token}x")
+    assert not token_matches(token, None)
+    assert load_or_create_token(tmp_path, "configured") == "configured"

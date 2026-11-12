@@ -8,7 +8,8 @@ import os
 import secrets
 from pathlib import Path
 
-TOKEN_FILENAME = "api_token"  # noqa: S105 - a file name, not a credential
+# The name of the file that stores the token, not a credential itself.
+TOKEN_FILENAME = "api_token"  # noqa: S105  # nosec B105
 
 
 def load_or_create_token(data_dir: Path, configured: str | None = None) -> str:

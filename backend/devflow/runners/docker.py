@@ -25,6 +25,8 @@ from devflow.runners.base import (
 from devflow.security.commands import minimal_env, run_command, start_process
 
 SANDBOX_UID = "10001:10001"
+# A size-limited tmpfs inside the container (not a host path); HOME points here.
+_CONTAINER_TMPFS = "/tmp:rw,noexec,nosuid,nodev,size=64m"  # noqa: S108  # nosec B108
 _FORBIDDEN_FLAGS = frozenset(
     {
         "--privileged",
@@ -89,7 +91,7 @@ class DockerRunner:
             "--label", f"devflow.run_id={spec.run_id}",
             "--network", "none",
             "--read-only",
-            "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m",  # noqa: S108 - path inside the container
+            "--tmpfs", _CONTAINER_TMPFS,
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
             "--user", SANDBOX_UID,

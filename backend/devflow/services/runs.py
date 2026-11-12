@@ -17,6 +17,8 @@ from devflow.config import Settings
 from devflow.database.models import (
     ACTIVE_STATUSES,
     Failure,
+    PatchProposal,
+    PatchStatus,
     Repository,
     RunKind,
     RunStatus,
@@ -160,7 +162,10 @@ class RunService:
     # ---- execution ------------------------------------------------------------------
 
     def _execute(self, run_id: int, prepare: SourcePreparer, cancel: threading.Event) -> None:
-        run_dir = make_private_dir(self.settings.runs_dir / str(run_id))
+        run_dir = self.settings.runs_dir / str(run_id)
+        # SQLite can reuse the id of a deleted run; never let stale artifacts leak in.
+        shutil.rmtree(run_dir, ignore_errors=True)
+        make_private_dir(run_dir)
         source_dir, output_dir = run_dir / "src", make_private_dir(run_dir / "out")
         with tracer.start_as_current_span("devflow.run", attributes={"run_id": run_id}) as span:
             with self.db.transaction() as session:
@@ -174,8 +179,6 @@ class RunService:
             config = self.runtime.get()
             try:
                 with tracer.start_as_current_span("devflow.prepare_source"):
-                    if source_dir.exists():
-                        shutil.rmtree(source_dir)
                     info = prepare(source_dir)
                 with tracer.start_as_current_span(
                     "devflow.runner.execute", attributes={"runner": self.runner.name}
@@ -299,6 +302,8 @@ class RunService:
         run.active_key = None
         run.finished_at = utcnow()
         run.duration_ms = int((run.finished_at - run.created_at).total_seconds() * 1000)
+        if run.patch_id is not None:
+            _record_retest_verdict(session, run.patch_id, status)
         metrics.RUNS_TOTAL.labels(status.value, run.runner).inc()
         metrics.RUN_DURATION.labels(run.runner).observe(run.duration_ms / 1000)
         if run.overhead_ms is not None:
@@ -509,6 +514,19 @@ class RunService:
                 .order_by(TestRun.id.desc())
                 .limit(1)
             )
+
+
+def _record_retest_verdict(session: Any, patch_id: int, status: RunStatus) -> None:
+    """Advance the patch in the same transaction that finishes its retest run."""
+    patch = session.get(PatchProposal, patch_id)
+    if patch is None or patch.status != PatchStatus.RETESTING.value:
+        return
+    if status == RunStatus.PASSED:
+        patch.status = PatchStatus.RETEST_PASSED.value
+    elif status in (RunStatus.ERROR, RunStatus.CANCELLED):
+        patch.status = PatchStatus.APPROVED.value  # no verdict; the retest can be rerun
+    else:
+        patch.status = PatchStatus.RETEST_FAILED.value
 
 
 def _decide_status(
