@@ -86,6 +86,23 @@ def test_parse_junit_missing_or_malformed(tmp_path: Path) -> None:
         ("failed", "E   Failed: Timeout (>5.0s) from pytest-timeout.", "timeout"),
         ("error", "collection failure\nE   RuntimeError: boom", "collection_error"),
         ("error", "E   KeyError: 'id'", "exception"),
+        (
+            "failed",
+            "/usr/local/lib/python3.12/subprocess.py:1955: in _execute_child\n"
+            "E   FileNotFoundError: [Errno 2] No such file or directory: 'git'",
+            "missing_dependency",
+        ),
+        # A missing data file is a real failure, not an environment problem.
+        (
+            "failed",
+            "E   FileNotFoundError: [Errno 2] No such file or directory: 'config.json'",
+            "exception",
+        ),
+        (
+            "failed",
+            "E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/x/out.txt'",
+            "exception",
+        ),
     ],
 )
 def test_classification(outcome: str, text: str, category: str) -> None:

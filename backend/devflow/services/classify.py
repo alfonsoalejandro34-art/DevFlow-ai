@@ -9,6 +9,11 @@ from dataclasses import dataclass
 from devflow.database.models import FailureCategory
 
 _MISSING_MODULE = re.compile(r"No module named '([^']+)'")
+# subprocess raising FileNotFoundError for a bare command name: the program is not
+# installed in the sandbox (a plain missing data file has a path and no subprocess frame).
+_MISSING_PROGRAM = re.compile(
+    r"FileNotFoundError: \[Errno 2\] No such file or directory: '([^'/]+)'"
+)
 _EXCEPTION_LINE = re.compile(r"^E?\s*([A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt))\b", re.M)
 _LOCATION = re.compile(r"^(?P<file>[^\s:][^:\n]*\.py):(?P<line>\d+):", re.M)
 _GENERIC_MESSAGES = {"collection failure", "failed on setup with", "failed on teardown with"}
@@ -67,6 +72,8 @@ def _category(outcome: str, text: str, exception_type: str | None, nodeid: str) 
         return FailureCategory.SYNTAX_ERROR
     if exception_type in ("ModuleNotFoundError", "ImportError") and _MISSING_MODULE.search(text):
         return FailureCategory.MISSING_DEPENDENCY
+    if _missing_program(text):
+        return FailureCategory.MISSING_DEPENDENCY
     if outcome == "error" and (
         "collection failure" in text or "ERROR collecting" in text or nodeid == "<collection>"
     ):
@@ -98,6 +105,12 @@ def _summary(
     category: FailureCategory, message: str | None, text: str, exception_type: str | None
 ) -> str:
     if category == FailureCategory.MISSING_DEPENDENCY:
+        program = _missing_program(text)
+        if program:
+            return (
+                f"Missing dependency: program '{program}' was not found on the PATH it was "
+                "launched with (not installed, or the code overrides PATH)"
+            )
         match = _MISSING_MODULE.search(text)
         return (
             f"Missing dependency: module '{match.group(1)}' is not installed"
@@ -110,3 +123,8 @@ def _summary(
         if line.startswith("E ") or (exception_type and exception_type in line):
             return line.lstrip("E ").strip()[:500]
     return (exception_type or category.value)[:500]
+
+
+def _missing_program(text: str) -> str | None:
+    match = _MISSING_PROGRAM.search(text)
+    return match.group(1) if match and "subprocess" in text else None

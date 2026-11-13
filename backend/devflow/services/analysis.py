@@ -53,6 +53,7 @@ from devflow.workers.jobs import JobManager
 log = logging.getLogger(__name__)
 MAX_FAILURES_IN_CONTEXT = 8
 MAX_FEEDBACK_FAILURES = 5
+ENVIRONMENT_CATEGORIES = frozenset({"missing_dependency", "infrastructure"})
 MAX_FEEDBACK_TRACEBACK = 1500
 MAX_FEEDBACK_DIFF = 8000
 
@@ -186,6 +187,12 @@ class AnalysisService:
         ):
             try:
                 request = self._build_input(run, repo)
+                if request.failures and all(
+                    f.category in ENVIRONMENT_CATEGORIES for f in request.failures
+                ):
+                    # Code edits cannot install a missing program or package, so retrying
+                    # would only spend the user's AI quota.
+                    max_attempts = 1
                 feedback: str | None = None
                 for number in range(1, max_attempts + 1):
                     if cancel.is_set():

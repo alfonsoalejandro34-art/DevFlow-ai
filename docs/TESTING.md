@@ -57,7 +57,7 @@ file and line locations, state transitions, and that user repositories stay unch
 
 ## Results on the development machine
 
-- Backend: **152 passed, 0 skipped**, including the 5 live Docker sandbox tests
+- Backend: **156 passed, 0 skipped**, including the 5 live Docker sandbox tests
   (Docker Desktop 29.9.3), with 87% line coverage.
 - Frontend: **11 passed**.
 - Browser end-to-end: **2 passed** (3 consecutive runs, ~10 s each). With the bug below
@@ -95,3 +95,11 @@ Live testing caught issues the unit tests had not, and each now has a regression
     panels stopped polling without fetching the final state. A freshly finished run
     with 5 failures showed "Every collected test passed." until the page was reloaded.
     The shared data hook now refetches once when polling stops (component test + E2E).
+11. **Found by running a real project** (`multi_ai_dev_system`, 43 tests): 25 failures
+    came from the sandbox lacking `git`. They were classified as code exceptions,
+    which would have sent AI after an unfixable problem. The runner image now includes
+    git (no network, neutral commit identity). A subprocess `FileNotFoundError` for a
+    bare program name is now classified as `missing_dependency`, and environment-only
+    failures get a single AI attempt. The rerun went to 30/43 and exposed a genuine
+    portability bug in that project (a hard-coded `PATH=/usr/bin:/bin` that only works
+    on macOS). Claude Code fixed it in agent mode on attempt 1 (sandbox check 43/43).

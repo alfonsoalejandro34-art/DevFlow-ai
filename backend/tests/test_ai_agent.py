@@ -232,6 +232,15 @@ def test_agent_that_changes_nothing(
     assert analysis["root_cause"] == "fake root cause"
 
 
+def test_environment_only_failures_get_a_single_attempt(
+    client: TestClient, agent: FakeAIProvider, examples: dict[str, int]
+) -> None:
+    run = wait_run(client, start_run(client, examples["missing-dependency-demo"])["id"])
+    agent.actions = [lambda ws: None, FIX_ALL]
+    analysis = analyze(client, run["id"])
+    assert len(analysis["attempts"]) == 1 and len(agent.actions) == 1
+
+
 def test_verification_can_be_disabled(
     client: TestClient, agent: FakeAIProvider, failing_run: dict[str, Any]
 ) -> None:

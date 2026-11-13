@@ -335,7 +335,9 @@ Methodology and both batches: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 - Python/pytest repositories only. Other languages are detected but marked unsupported.
 - Sandbox containers have no network, so dependencies must be in the runner image
-  (`runner/requirements.txt`); repos needing other packages fail as "missing dependency".
+  (Python packages in `runner/requirements.txt`, programs in `runner/Dockerfile`; `git`
+  is included). Repos needing anything else fail as "missing dependency", which DevFlow
+  classifies as an environment problem and gives AI analysis only one attempt.
 - Single-user, single-process design (in-process job pool, SQLite). Not multi-tenant.
 - Agent mode trusts the CLIs' own sandboxes (Claude Code `--restricted`, Codex's
   seatbelt sandbox on macOS) to confine edits to the workspace. Those boundaries were

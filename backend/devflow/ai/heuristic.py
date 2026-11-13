@@ -22,10 +22,10 @@ _ADVICE = {
     "traceback is the most likely place to start.",
     "syntax_error": "Python could not parse a source file, so the tests importing it could not be "
     "collected. Fix the syntax at the reported line.",
-    "missing_dependency": "A module imported by the code is not installed in the sandbox. Test "
-    "containers have no network access, so dependencies must be part of the runner image or "
-    "vendored in the repository. Add the package to the runner image (runner/requirements.txt) "
-    "or remove the import.",
+    "missing_dependency": "A module or program the tests need is not installed in the sandbox. "
+    "This is an environment problem, not a code bug: editing the code will not fix it. Test "
+    "containers have no network access, so Python packages must be in the runner image "
+    "(runner/requirements.txt) and programs in runner/Dockerfile.",
     "timeout": "A test did not finish within the time limit. Look for infinite loops, blocking "
     "I/O, or calls that wait on the network (which is disabled inside the sandbox).",
     "collection_error": "pytest failed while importing test modules. Check the import error and "
